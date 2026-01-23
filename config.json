@@ -1,8 +1,17 @@
 {
-  "TOKEN": "YOUR_TOKEN_HERE",
-  "OwnerID": "YOUR_ID_HERE",
-  "spamChannelID": "CHANNEL_ID_FOR_SPAM",
-  "logChannelID": "CHANNEL_ID_FOR_LOGS",
-  "ocrSpaceApiKey": "YOUR_OCR_API_KEY",
-  "allowedChannels": [] 
+  "switchSpam": false,
+  "switchOcr": false,
+  "DEFAULT_APP_PORT": 3333,
+  "DELAY_MIN": 3000,
+  "DELAY_MAX": 5000,
+  "TOKEN": "XXXXXXXXX",
+  "OwnerID": "XXXXXXXXX",
+  "spamChannelID": "XXXXXXXXX",
+  "logChannelID": "",
+  "ocrSpaceApiKey": "",
+  "allowedChannels": [
+    "XXXXXXXXX",
+    "XXXXXXXXX",
+    "XXXXXXXXX"
+  ]
 }
