@@ -154,6 +154,13 @@ client.on("messageCreate", async (message) => {
     return message.channel.send("⚠️ Captcha Detected! Sleeping.");
   }
 
+  // Guard on only allowed channel
+  if (
+    allowedChannels.length > 0 &&
+    !allowedChannels.includes(message.channel.id)
+  )
+    return;
+
   // --- IMPROVED HINT SOLVER ---
   if (
     message.author.id === POKETWO_ID &&
@@ -200,11 +207,6 @@ client.on("messageCreate", async (message) => {
 
   // --- IMPROVED OCR (PREVIOUSLY DISCUSSED) ---
   if (HINT_BOT_IDS.includes(message.author.id)) {
-    if (
-      allowedChannels.length > 0 &&
-      !allowedChannels.includes(message.channel.id)
-    )
-      return;
 
     let preferredURL = null;
     message.embeds.forEach((e) => {
