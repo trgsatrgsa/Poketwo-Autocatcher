@@ -167,12 +167,12 @@ async function logUnidentifiedPokemon(imageUrl, guess) {
 async function performCatch(channel, pokemonName, rawOcrText = null, imageUrl = null) {
     let catchDelay = getRandomInterval(config.catchDelayMin, config.catchDelayMax);
 
-    console.log(`[ACTION] Catching ${pokemonName} in ${catchDelay}ms...`);
+    console.log(`[ACTION] Catching ${pokemonName} in ${catchDelay / 1000}s...`);
     await sleep(catchDelay);
 
     // --- STEALTH LOGIC FOR PUBLIC CHANNELS ---
     // 1. Check if we should care about this channel
-    const mode = getChannelMode(message.channel.id);
+    const mode = getChannelMode(channel.id);
     if (mode === "NONE") return; // Ignore channels not in our lists
 
     if (mode === "PUBLIC") {
