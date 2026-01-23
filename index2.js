@@ -64,6 +64,13 @@ const HINT_BOT_IDS = ["696161886734909481", "874910942490677270"];
 let isSleeping = false;
 const activeBadGuesses = new Map(); // Key: ChannelID, Value: RawGuess
 
+// --- STATE MANAGEMENT ---
+// Key: ChannelID, Value: Array of { userId: string, timestamp: number }
+const activityCache = new Map();
+// How long to remember a user is "active" (2 Minutes)
+const ACTIVITY_WINDOW_MS = 3 * 60 * 1000;
+
+
 // --- CLIENT SETUP ---
 const client = new Discord.Client({ checkUpdate: false });
 const app = express();
@@ -86,6 +93,40 @@ function getChannelMode(channelID) {
     if (config.privateChannels.includes(channelID)) return "PRIVATE";
     if (config.publicChannels.includes(channelID)) return "PUBLIC";
     return "NONE";
+}
+
+// --- HELPER: TRACK ACTIVITY ---
+function updateActivityLog(message) {
+    // Ignore Bot itself and Poketwo
+    if (message.author.id === client.user.id || message.author.id === POKETWO_ID) return;
+
+    const now = Date.now();
+    const channelID = message.channel.id;
+
+    let logs = activityCache.get(channelID) || [];
+
+    // Add current user action
+    logs.push({ userId: message.author.id, timestamp: now });
+
+    // Clean up old logs (> 5 mins ago)
+    logs = logs.filter(log => now - log.timestamp < ACTIVITY_WINDOW_MS);
+
+    activityCache.set(channelID, logs);
+}
+
+// --- HELPER: ANALYZE CROWD ---
+function getChannelStatus(channelID) {
+    const logs = activityCache.get(channelID) || [];
+    const uniqueUsers = new Set(logs.map(l => l.userId));
+    const userCount = uniqueUsers.size;
+
+    // LOGIC DEFINITION:
+    // > 2 people? Too risky.
+    // 1-2 people? Careful mode.
+    // 0 people? Lonely mode.
+    if (userCount > 2) return "CROWDED";
+    if (userCount > 0) return "ACTIVE";
+    return "LONELY";
 }
 
 // Identification Logic
@@ -165,34 +206,85 @@ async function logUnidentifiedPokemon(imageUrl, guess) {
 // ---------------------------------------------------------
 
 async function performCatch(channel, pokemonName, rawOcrText = null, imageUrl = null) {
-    let catchDelay = getRandomInterval(config.catchDelayMin, config.catchDelayMax);
-
-    console.log(`[ACTION] Catching ${pokemonName} in ${catchDelay / 1000}s...`);
-    await sleep(catchDelay);
-
-    // --- STEALTH LOGIC FOR PUBLIC CHANNELS ---
-    // 1. Check if we should care about this channel
+    // 1. ANALYZE ENVIRONMENT
+    const crowdStatus = getChannelStatus(channel.id);
     const mode = getChannelMode(channel.id);
-    if (mode === "NONE") return; // Ignore channels not in our lists
 
-    if (mode === "PUBLIC") {
-        // A. "Not the one always catching" (Random Skip)
-        const skipRoll = Math.floor(Math.random() * 100);
-        if (skipRoll < config.publicSkipChance) {
-            console.log(`[STEALTH] Skipped ${pokemonToCatch} in Public Channel to look human.`);
-            return; // STOP! Don't catch.
-        }
+    console.log(`[ANALYSIS] Channel: ${channel.id} | Users (3m): ${crowdStatus} | Mode: ${mode}`);
 
-        // B. "Try to catch when not much person" / Slower reaction
-        // We add extra delay to simulate a human reading the screen
-        const extraMs = (config.publicExtraDelay || 2) * 1000;
-        catchDelay += extraMs;
-        console.log(`[STEALTH] Target: ${pokemonToCatch}. Mode: PUBLIC. Added ${extraMs}ms delay.`);
-    } else {
-        console.log(`[FARMING] Target: ${pokemonToCatch}. Mode: PRIVATE. Catching fast.`);
+    // 2. STOP IF CROWDED (Safety First)
+    if (crowdStatus === "CROWDED") {
+        console.log(`[SAFETY] Too many people (${crowdStatus}). Aborting catch for ${pokemonName}.`);
+        return;
     }
 
-    // Excute catch
+    // 3. CALCULATE DELAY
+    let catchDelay = getRandomInterval(config.catchDelayMin, config.catchDelayMax);
+
+    if (mode === "PUBLIC") {
+        if (crowdStatus === "ACTIVE") {
+            // LOGIC: If Public channel AND people are watching (ACTIVE), use probability
+
+            // Rolling the dice (Stealth)
+            const skipRoll = Math.floor(Math.random() * 100);
+            if (skipRoll < config.publicSkipChance) {
+                console.log(`[STEALTH] Skipped ${pokemonName} because people are watching.`);
+                return;
+            }
+            // Add "Human Reaction" delay
+            const extraMs = (config.publicExtraDelay || 2) * 1000;
+            catchDelay += extraMs;
+        } else if (crowdStatus === "LONELY") {
+            // LOGIC: If "LONELY" (No one spoke in 5 mins), catch slower (lazy bot)
+            // or fast if it's a private farm server
+            // Add "Human Reaction" delay
+            const extraMs = (config.publicExtraDelay || 2) * 1000;
+            catchDelay += extraMs;
+        }
+    }
+
+    console.log(`[ACTION] Catching ${pokemonName} in ${catchDelay / 1000}s...`);
+
+    // 4. TYPING INDICATOR (New Feature!)
+    // Start typing to look like a human
+    if (channel.type === "GUILD_TEXT") {
+        channel.sendTyping().catch(() => { });
+    }
+
+
+    // =================================================================
+    // 5. THE "SNIPE" PROTECTION (Watchdog)
+    // =================================================================
+    let sniped = false;
+
+    // Create a temporary listener that lives ONLY during the delay
+    const watchdog = channel.createMessageCollector({
+        filter: m => m.author.id === POKETWO_ID && (m.content.includes("Congratulations") || message.embeds[0]?.title?.includes("fled")),
+        time: catchDelay
+    });
+
+    watchdog.on('collect', (m) => {
+        // If someone catches ANY pokemon, we assume ours is gone.
+        // Or we see fled happended, we assume it is gone.
+        // (You can make this stricter by checking if m.content includes pokemonName, 
+        // but Poketwo sometimes doesn't say the name if the user nicknamed it).
+        console.log(`[ABORT] Someone else caught the pokemon!`);
+        sniped = true;
+        watchdog.stop(); // Stop listening
+    });
+
+    // WAIT THE DELAY
+    await sleep(catchDelay);
+
+    // =================================================================
+    // 6. FINAL CHECK BEFORE SENDING
+    // =================================================================
+    if (sniped) {
+        console.log(`[CANCEL] Catch cancelled because it was already caught.`);
+        return; // STOP HERE. Do not send message.
+    }
+
+    // 7. EXECUTE CATCH
     await channel.send(`<@${POKETWO_ID}> catch ${pokemonName}`);
 
     // Create a temporary listener for the result
@@ -278,6 +370,9 @@ client.on("messageCreate", async (message) => {
     // Check if we should care about this channel
     const mode = getChannelMode(message.channel.id);
     if (mode === "NONE") return; // Ignore channels not in our lists
+
+    // 1. RECORD ACTIVITY only for guarded
+    updateActivityLog(message);
 
     // 2. Owner Commands
     if (message.author.id === config.ownerID) {
