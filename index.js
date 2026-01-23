@@ -264,56 +264,56 @@ client.on("messageCreate", async (message) => {
   //   }
   // }
 
-  // --- IMPROVED HINT SOLVER ---
-  if (
-    message.author.id === POKETWO_ID &&
-    message.content.includes("The pokémon is")
-  ) {
-    let pokemon = [];
-    // 1. Try External Library
-    try {
-      pokemon = await solveHint(message);
-    } catch (err) {
-      console.log("[HINT] External lib error, trying local...");
-    }
+  // // --- IMPROVED HINT SOLVER ---
+  // if (
+  //   message.author.id === POKETWO_ID &&
+  //   message.content.includes("The pokémon is")
+  // ) {
+  //   let pokemon = [];
+  //   // 1. Try External Library
+  //   try {
+  //     pokemon = await solveHint(message);
+  //   } catch (err) {
+  //     console.log("[HINT] External lib error, trying local...");
+  //   }
 
-    // 2. Fallback: If external lib failed, use LOCAL SOLVER
-    if (!pokemon || pokemon.length === 0) {
-      console.log("[HINT] External lib returned nothing. Using Local Logic.");
-      pokemon = solveHintLocally(message.content);
-    }
+  //   // 2. Fallback: If external lib failed, use LOCAL SOLVER
+  //   if (!pokemon || pokemon.length === 0) {
+  //     console.log("[HINT] External lib returned nothing. Using Local Logic.");
+  //     pokemon = solveHintLocally(message.content);
+  //   }
 
-    // 3. Catch if we found something
-    if (pokemon.length > 0) {
-      const name = pokemon[0]; // Take the first best guess
-      console.log(
-        `[HINT SOLVED] Result: ${name}. Catching in ${catchDelay / 1000}s.`
-      );
+  //   // 3. Catch if we found something
+  //   if (pokemon.length > 0) {
+  //     const name = pokemon[0]; // Take the first best guess
+  //     console.log(
+  //       `[HINT SOLVED] Result: ${name}. Catching in ${catchDelay / 1000}s.`
+  //     );
 
-      setTimeout(async () => {
-        await message.channel.send(`<@${POKETWO_ID}> catch ${name}`);
-        // Optional: Check Rarity
-        try {
-          const rarity = await checkRarity(name);
-          const logChannel = client.channels.cache.get(config.logChannelID);
-          const datenow = new Date();
-          const formattedDateTimeShort = new Intl.DateTimeFormat("en-GB", {
-            dateStyle: "short",
-            timeStyle: "long",
-          }).format(datenow);
-          if (logChannel)
-            logChannel.send(
-              `Caught **${name}** (Rarity: ${rarity}) [${formattedDateTimeShort}]`
-            );
-        } catch (e) {
-          console.log(`[ERR] Fail to get rarity, ${e}`);
-        }
-      }, catchDelay);
-    } else {
-      console.log("[HINT FAILED] Could not solve hint locally or externally.");
-    }
-    return;
-  }
+  //     setTimeout(async () => {
+  //       await message.channel.send(`<@${POKETWO_ID}> catch ${name}`);
+  //       // Optional: Check Rarity
+  //       try {
+  //         const rarity = await checkRarity(name);
+  //         const logChannel = client.channels.cache.get(config.logChannelID);
+  //         const datenow = new Date();
+  //         const formattedDateTimeShort = new Intl.DateTimeFormat("en-GB", {
+  //           dateStyle: "short",
+  //           timeStyle: "long",
+  //         }).format(datenow);
+  //         if (logChannel)
+  //           logChannel.send(
+  //             `Caught **${name}** (Rarity: ${rarity}) [${formattedDateTimeShort}]`
+  //           );
+  //       } catch (e) {
+  //         console.log(`[ERR] Fail to get rarity, ${e}`);
+  //       }
+  //     }, catchDelay);
+  //   } else {
+  //     console.log("[HINT FAILED] Could not solve hint locally or externally.");
+  //   }
+  //   return;
+  // }
 
   // Tesseract: OCR
   if (true) {
