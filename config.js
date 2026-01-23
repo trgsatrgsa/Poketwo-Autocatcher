@@ -66,6 +66,11 @@ module.exports = {
     // 1000ms = 1 second.
     autoHintDelay: 2000,
 
+    // SAFETY COOLDOWN: Minimum time (ms) between two hint commands.
+    // If pokemon spawn too fast, the bot will WAIT until this time passes.
+    // Recommended: 60000 (60 seconds) to avoid "You are typing too fast" or ignored commands.
+    hintCooldown: 60000,
+
     // Should the bot try to solve hints (e.g. "The pokemon is P_k_c_u")?
     activateHintSolver: true,
 

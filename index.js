@@ -63,6 +63,7 @@ const HINT_BOT_IDS = ["696161886734909481", "874910942490677270"];
 // State
 let isSleeping = false;
 const activeBadGuesses = new Map(); // Key: ChannelID, Value: RawGuess
+const channelHintTimers = new Map(); // <--- NEW: Tracks hint timer per Channel ID
 
 // --- STATE MANAGEMENT ---
 // Key: ChannelID, Value: Array of { userId: string, timestamp: number }
@@ -407,19 +408,48 @@ client.on("messageCreate", async (message) => {
     }
 
     // ---------------------------------------------------------
-    // NEW: Auto-Hint Sender
+    // NEW: Per-Channel Smart Auto-Hint
     // ---------------------------------------------------------
     const embedTitle = message.embeds[0]?.title;
 
-    // Check if user turned it on AND if it's a valid spawn message
     if (config.activateAutoHint && message.author.id === POKETWO_ID && embedTitle && embedTitle.includes("has appeared")) {
-        console.log(`[SPAWN] Wild Pokémon appeared. Waiting ${config.autoHintDelay}ms to send hint...`);
 
-        // Wait the configured amount of time
-        await sleep(config.autoHintDelay || 2000);
+        const channelID = message.channel.id;
+        const now = Date.now();
 
-        // Send the hint command
-        await message.channel.send(`<@${POKETWO_ID}> hint`);
+        // 1. Get the last time WE sent a hint IN THIS SPECIFIC CHANNEL
+        // If never sent, default to 0
+        const lastHintTime = channelHintTimers.get(channelID) || 0;
+
+        const timeSinceLastHint = now - lastHintTime;
+
+        // 2. Base delay (User config)
+        let waitTime = config.autoHintDelay || 2000;
+
+        // 3. Check Cooldown specific to this channel
+        const cooldown = config.hintCooldown || 5000;
+
+        if (timeSinceLastHint < cooldown) {
+            const timeToWait = cooldown - timeSinceLastHint;
+            // Only log if the wait is significant to avoid console spam
+            if (timeToWait > 1000) {
+                console.log(`[${channelID}] Hint cooldown active. Adding ${timeToWait}ms.`);
+            }
+            waitTime += timeToWait;
+        }
+
+        console.log(`[SPAWN] Pokémon in ${channelID}. Hint in ${waitTime / 1000}s...`);
+
+        // 4. Update THIS channel's timer
+        channelHintTimers.set(channelID, now + waitTime);
+
+        // 5. Wait and Send
+        await sleep(waitTime);
+
+        // Double check we didn't go to sleep while waiting
+        if (!isSleeping) {
+            await message.channel.send(`<@${POKETWO_ID}> hint`);
+        }
 
         // We do NOT return here. Why?
         // Because we want the OCR (Section 5) to potentially run in parallel
