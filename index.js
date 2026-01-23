@@ -168,7 +168,19 @@ client.on("messageCreate", async (message) => {
   ) {
     isSleeping = true;
     await message.channel.send("⚠️ Captcha Detected! Sleeping.");
+    await sleep(1000);
     await message.channel.send(`<@${POKETWO_ID}> incense pause`);
+
+    // Open with url
+    const urlRegex = /(https?:\/\/[^\s]+)/;
+    const match = message.content.match(urlRegex);
+    const captchaUrl = match[0];
+
+    // Dynamic import works in CommonJS for ESM-only packages
+    import("open").then((openModule) => {
+      const open = openModule.default;
+      open(captchaUrl);
+    });
     return;
   }
 
