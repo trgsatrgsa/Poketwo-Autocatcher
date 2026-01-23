@@ -423,8 +423,6 @@ client.on("messageCreate", async (message) => {
                 }
             }
         }
-    } else {
-        if (config.activateImageReader && !hasEmbedImage) console.log("[OCR] OCR enable but image is not exist!");
     }
 
     // 6. Hint Detection
