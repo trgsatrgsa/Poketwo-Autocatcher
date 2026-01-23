@@ -87,12 +87,6 @@ function identifyPokemon(ocrInput) {
     return originalObj ? originalObj.original.toUpperCase() : cleanInput;
   }
 
-  // 4. Manual JSON Fixes first
-  if (customFixes.hasOwnProperty(cleanInput)) {
-    console.log(`[INDENTIFY] Use custom fix on the refine search!`);
-    return customFixes[cleanInput];
-  }
-
   return cleanInput;
 }
 
