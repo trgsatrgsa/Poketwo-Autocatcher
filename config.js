@@ -58,6 +58,14 @@ module.exports = {
     // SECTION 4: BEHAVIOR SETTING
     // ============================
 
+    // Should the bot automatically ask for a hint when a pokemon spawns?
+    // This is very useful if OCR fails. The bot will see the hint and solve it.
+    activateAutoHint: false,
+
+    // How long to wait (in milliseconds) before asking for a hint?
+    // 1000ms = 1 second.
+    autoHintDelay: 2000,
+
     // Should the bot try to solve hints (e.g. "The pokemon is P_k_c_u")?
     activateHintSolver: true,
 

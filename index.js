@@ -406,6 +406,26 @@ client.on("messageCreate", async (message) => {
         return;
     }
 
+    // ---------------------------------------------------------
+    // NEW: Auto-Hint Sender
+    // ---------------------------------------------------------
+    const embedTitle = message.embeds[0]?.title;
+
+    // Check if user turned it on AND if it's a valid spawn message
+    if (config.activateAutoHint && message.author.id === POKETWO_ID && embedTitle && embedTitle.includes("has appeared")) {
+        console.log(`[SPAWN] Wild Pokémon appeared. Waiting ${config.autoHintDelay}ms to send hint...`);
+
+        // Wait the configured amount of time
+        await sleep(config.autoHintDelay || 2000);
+
+        // Send the hint command
+        await message.channel.send(`<@${POKETWO_ID}> hint`);
+
+        // We do NOT return here. Why?
+        // Because we want the OCR (Section 5) to potentially run in parallel 
+        // as a backup if the hint takes too long.
+    }
+
     // 5. Spawn Detection (OCR)
     const hasEmbedImage = message.embeds[0]?.image;
     if (config.activateImageReader && hasEmbedImage) {
