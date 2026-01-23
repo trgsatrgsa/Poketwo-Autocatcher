@@ -15,11 +15,41 @@ const { ocrSpace } = require("ocr-space-api-wrapper");
 const stringSimilarity = require("string-similarity");
 const pokemonNames = require("pokemon");
 
-// --- LOAD CONFIG & DATA ---
-const config = require(process.env.CFG || "./config.json");
-const customFixes = require("./namefix.json");
+// --- LOAD CONFIGURATION (With Safety Checks) ---
+let config = require("./config.js");
+try {
+    // We use ./config.js now instead of .json
+    config = require("./config.js");
+} catch (e) {
+    console.error("\n[CRITICAL ERROR] Could not find 'config.js'!");
+    console.error("Please make sure the file exists and has no coding errors.\n");
+    process.exit(1);
+}
+
+// --- USER INPUT VALIDATION (Friendly Errors) ---
+// This section checks if the user actually filled out the config file.
+if (config.userToken === "PASTE_YOUR_TOKEN_HERE" || config.userToken === "") {
+    console.log("\n===================================================");
+    console.log(" [STOP] YOU FORGOT TO CONFIGURE THE BOT!");
+    console.log("===================================================");
+    console.log(" Please open 'config.js' and paste your User Token.");
+    console.log(" The bot cannot start without it.");
+    console.log("===================================================\n");
+    process.exit(1);
+}
+
+if (config.activateSpamming && config.spamChannelID === "PASTE_CHANNEL_ID_HERE") {
+    console.log("\n[WARNING] You turned on Spamming, but didn't provide a Channel ID.");
+    console.log("The bot will NOT spam messages until you fix 'spamChannelID'.\n");
+    config.activateSpamming = false; // Force disable to prevent crash
+}
+
+console.log(`[STATUS] Configuration loaded successfully.`);
+console.log(`[STATUS] Logged in user: ${config.ownerID ? "Valid" : "Unknown (ID missing)"}`);
+
 
 // Preload Pokemon List
+const customFixes = require("./namefix.json");
 const ALL_POKEMON = pokemonNames.all();
 const CLEAN_POKEMON_LIST = ALL_POKEMON.map((p) => ({
     original: p,
@@ -49,6 +79,13 @@ function getRandomInterval(min, max) {
 
 function sleep(ms) {
     return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// --- HELPER: DETERMINE CHANNEL TYPE ---
+function getChannelMode(channelID) {
+    if (config.privateChannels.includes(channelID)) return "PRIVATE";
+    if (config.publicChannels.includes(channelID)) return "PUBLIC";
+    return "NONE";
 }
 
 // Identification Logic
@@ -128,11 +165,34 @@ async function logUnidentifiedPokemon(imageUrl, guess) {
 // ---------------------------------------------------------
 
 async function performCatch(channel, pokemonName, rawOcrText = null, imageUrl = null) {
-    const catchDelay = getRandomInterval(config.behavior.catchDelay.min, config.behavior.catchDelay.max);
+    let catchDelay = getRandomInterval(config.catchDelayMin, config.catchDelayMax);
 
     console.log(`[ACTION] Catching ${pokemonName} in ${catchDelay}ms...`);
     await sleep(catchDelay);
 
+    // --- STEALTH LOGIC FOR PUBLIC CHANNELS ---
+    // 1. Check if we should care about this channel
+    const mode = getChannelMode(message.channel.id);
+    if (mode === "NONE") return; // Ignore channels not in our lists
+
+    if (mode === "PUBLIC") {
+        // A. "Not the one always catching" (Random Skip)
+        const skipRoll = Math.floor(Math.random() * 100);
+        if (skipRoll < config.publicSkipChance) {
+            console.log(`[STEALTH] Skipped ${pokemonToCatch} in Public Channel to look human.`);
+            return; // STOP! Don't catch.
+        }
+
+        // B. "Try to catch when not much person" / Slower reaction
+        // We add extra delay to simulate a human reading the screen
+        const extraMs = (config.publicExtraDelay || 2) * 1000;
+        catchDelay += extraMs;
+        console.log(`[STEALTH] Target: ${pokemonToCatch}. Mode: PUBLIC. Added ${extraMs}ms delay.`);
+    } else {
+        console.log(`[FARMING] Target: ${pokemonToCatch}. Mode: PRIVATE. Catching fast.`);
+    }
+
+    // Excute catch
     await channel.send(`<@${POKETWO_ID}> catch ${pokemonName}`);
 
     // Create a temporary listener for the result
@@ -145,8 +205,8 @@ async function performCatch(channel, pokemonName, rawOcrText = null, imageUrl = 
             activeBadGuesses.delete(channel.id);
 
             // Log to Discord if enabled
-            if (config.logging.reportCaught && config.channels.logChannelId) {
-                const logChan = client.channels.cache.get(config.channels.logChannelId);
+            if (config.logChannelID && config.logChannelID !== "") {
+                const logChan = client.channels.cache.get(config.logChannelID);
                 if (logChan) logChan.send(`Caught **${pokemonName}** in <#${channel.id}>`);
             }
         }
@@ -156,7 +216,7 @@ async function performCatch(channel, pokemonName, rawOcrText = null, imageUrl = 
             if (rawOcrText) activeBadGuesses.set(channel.id, rawOcrText);
 
             // Save image for debug
-            if (config.logging.saveUnidentifiedImages && imageUrl) {
+            if (config.saveErrorImages && imageUrl) {
                 // Download image for backup
                 await logUnidentifiedPokemon(imageUrl, pokemonName);
             }
@@ -169,12 +229,13 @@ async function processImage(url) {
     try {
         let rawText = "";
 
-        if (config.behavior.ocrProvider === "tesseract") {
+        if (!(config.ocrSpaceApiKey && config.ocrSpaceApiKey !== "")) {
+            // Use internal ocr if is empty
             const { data: { text } } = await Tesseract.recognize(url, 'eng');
             rawText = text;
         } else {
             // Fallback to OCR Space
-            const res = await ocrSpace(url, { apiKey: config.credentials.ocrSpaceApiKey });
+            const res = await ocrSpace(url, { apiKey: config.ocrSpaceApiKey });
             if (res.ParsedResults && res.ParsedResults[0]) {
                 rawText = res.ParsedResults[0].ParsedText;
             }
@@ -197,15 +258,15 @@ client.on("ready", () => {
     console.log(`[STATUS] Logged in as ${client.user.tag}`);
 
     // Start Spam Loop
-    if (config.behavior.autoSpam.enabled) {
-        const spamChan = client.channels.cache.get(config.channels.spamChannelId);
+    if (config.spamChannelID && config.spamChannelID !== "") {
+        const spamChan = client.channels.cache.get(config.spamChannelID);
         if (!spamChan) return console.log("[WARN] Spam channel not found");
 
         const spamLoop = () => {
             if (!isSleeping) {
                 spamChan.send(faker.lorem.sentence(3));
             }
-            setTimeout(spamLoop, getRandomInterval(config.behavior.autoSpam.intervalMin, config.behavior.autoSpam.intervalMax));
+            setTimeout(spamLoop, getRandomInterval(config.spamDelayMin, config.spamDelayMax));
         };
         spamLoop();
     }
@@ -213,11 +274,13 @@ client.on("ready", () => {
 
 client.on("messageCreate", async (message) => {
     // 1. Global Guards
-    if (isSleeping && message.author.id !== config.credentials.ownerId) return;
-    if (config.channels.whitelist.length > 0 && !config.channels.whitelist.includes(message.channel.id)) return;
+    if (isSleeping && message.author.id !== config.ownerID) return;
+    // Check if we should care about this channel
+    const mode = getChannelMode(message.channel.id);
+    if (mode === "NONE") return; // Ignore channels not in our lists
 
     // 2. Owner Commands
-    if (message.author.id === config.credentials.ownerId) {
+    if (message.author.id === config.ownerID) {
         if (message.content === "$resume") {
             isSleeping = false;
             return message.reply("Resumed.");
@@ -250,7 +313,7 @@ client.on("messageCreate", async (message) => {
 
     // 5. Spawn Detection (OCR)
     const hasEmbedImage = message.embeds[0]?.image;
-    if (config.behavior.useOcr && hasEmbedImage) {
+    if (config.activateImageReader && hasEmbedImage) {
         // Check if it's a Poketwo spawn
         // Usually hints/spawns come from the Bot IDs or Poketwo itself
         if (message.author.id === POKETWO_ID || HINT_BOT_IDS.includes(message.author.id)) {
@@ -265,10 +328,12 @@ client.on("messageCreate", async (message) => {
                 }
             }
         }
+    } else {
+        if (config.activateImageReader && !hasEmbedImage) console.log("[OCR] OCR enable but image is not exist!");
     }
 
     // 6. Hint Detection
-    if (config.behavior.replyToHints && message.content.includes("The pokémon is")) {
+    if (config.activateHintSolver && message.content.includes("The pokémon is")) {
         // ... Insert hint solver logic here ...
         // const name = solveHint(message.content);
         // if(name) performCatch(message.channel, name);
@@ -285,8 +350,11 @@ client.on("messageCreate", async (message) => {
             pokemon = solveHintLocally(message.content);
         }
         // Catch pokemon
-        if (name) performCatch(message.channel, name);
+        if (pokemon.length > 0) {
+            const name = pokemon[0]; // Take the first best guess
+            if (name) performCatch(message.channel, name);
+        }
     }
 });
 
-client.login(config.credentials.token);
+client.login(config.userToken);
