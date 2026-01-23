@@ -25,6 +25,8 @@ const customFixes = require("./namefix.json");
 const config = require("./config.json");
 const allowedChannels = config.allowedChannels || [];
 let isSleeping = false;
+const DELAY_MIN = 3000;
+const DELAY_MAX = 8000;
 
 // Standard IDs
 const POKETWO_ID = "716390085896962058";
@@ -53,9 +55,11 @@ function getRandomInterval(min, max) {
 function identifyPokemon(ocrInput) {
   // 1. Clean the input
   const cleanInput = ocrInput.replace(/[^a-zA-Z0-9]/g, "").toUpperCase();
+  console.log(`[INDENTIFY] Clean input from ${ocrInput} -> ${cleanInput}`);
 
   // 2. Check Manual JSON Fixes first
   if (customFixes.hasOwnProperty(cleanInput)) {
+    console.log(`[INDENTIFY] Use custom fix!`);
     return customFixes[cleanInput];
   }
 
@@ -71,6 +75,7 @@ function identifyPokemon(ocrInput) {
     const originalObj = CLEAN_POKEMON_LIST.find(
       (p) => p.clean === bestMatch.target
     );
+    console.log(`[INDENTIFY] Use fuzzy match!`);
     return originalObj ? originalObj.original.toUpperCase() : cleanInput;
   }
 
@@ -129,7 +134,7 @@ client.on("ready", () => {
       const legitMessage = faker.lorem.words({ min: 1, max: 4 });
       channel.send(legitMessage);
     }
-    setTimeout(spam, getRandomInterval(10000, 30000));
+    setTimeout(spam, getRandomInterval(1000, 5000));
   }
   spam();
 });
@@ -161,12 +166,28 @@ client.on("messageCreate", async (message) => {
   )
     return;
 
+  // --- Send hint if wild pokemon appear ---
+  const embedTitle = message.embeds[0]?.title;
+
+  // Checking if it contains data before proceeding
+  if (embedTitle) {
+    console.log("Found Title:", embedTitle);
+    // Example: checking if it is a Pokétwo spawn
+    if (embedTitle.includes("has appeared")) {
+      console.log(embedTitle);
+      // Your logic here
+      await message.channel.send(`<@${POKETWO_ID}> hint`);
+      return;
+    }
+  }
+
   // --- IMPROVED HINT SOLVER ---
   if (
     message.author.id === POKETWO_ID &&
     message.content.includes("The pokémon is")
   ) {
     let pokemon = [];
+    const catchDelay = getRandomInterval(DELAY_MIN, DELAY_MAX);
 
     // 1. Try External Library
     try {
@@ -184,20 +205,24 @@ client.on("messageCreate", async (message) => {
     // 3. Catch if we found something
     if (pokemon.length > 0) {
       const name = pokemon[0]; // Take the first best guess
-      const catchDelay = getRandomInterval(3000, 8000);
       console.log(
         `[HINT SOLVED] Result: ${name}. Catching in ${catchDelay / 1000}s.`
       );
 
       setTimeout(async () => {
-        await message.channel.send(`<@${POKETWO_ID}> c ${name}`);
+        await message.channel.send(`<@${POKETWO_ID}> catch ${name}`);
         // Optional: Check Rarity
         try {
           const rarity = await checkRarity(name);
           const logChannel = client.channels.cache.get(config.logChannelID);
+          const datenow = new Date();
           if (logChannel)
-            logChannel.send(`Caught **${name}** (Rarity: ${rarity})`);
-        } catch (e) {}
+            logChannel.send(
+              `Caught **${name}** (Rarity: ${rarity}) [${datenow}]`
+            );
+        } catch (e) {
+          console.log(`[ERR] Fail to get rarity, ${e}`);
+        }
       }, catchDelay);
     } else {
       console.log("[HINT FAILED] Could not solve hint locally or externally.");
@@ -207,7 +232,6 @@ client.on("messageCreate", async (message) => {
 
   // --- IMPROVED OCR (PREVIOUSLY DISCUSSED) ---
   if (HINT_BOT_IDS.includes(message.author.id)) {
-
     let preferredURL = null;
     message.embeds.forEach((e) => {
       if (
@@ -241,15 +265,15 @@ client.on("messageCreate", async (message) => {
         // USE NEW IDENTIFY LOGIC
         const fixedName = identifyPokemon(rawName);
 
-        const delay = getRandomInterval(4000, 12000);
+        // catch delay
         console.log(
           `[OCR] Identified: ${fixedName} (Raw: ${rawName}). Waiting ${
-            delay / 1000
+            catchDelay / 1000
           }s.`
         );
 
         setTimeout(async () => {
-          await message.channel.send(`<@${POKETWO_ID}> c ${fixedName}`);
+          await message.channel.send(`<@${POKETWO_ID}> catch ${fixedName}`);
 
           const filter = (msg) => msg.author.id === POKETWO_ID;
           const collector = message.channel.createMessageCollector({
@@ -269,7 +293,7 @@ client.on("messageCreate", async (message) => {
               await logUnidentifiedPokemon(preferredURL, fixedName);
             }
           });
-        }, delay);
+        }, catchDelay);
       } catch (error) {
         console.error("[ERROR] OCR Processing failed.", error.message);
         await logUnidentifiedPokemon(preferredURL, "OCR_ERROR");
