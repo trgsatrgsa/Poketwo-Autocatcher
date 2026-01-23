@@ -199,7 +199,6 @@ client.on("messageCreate", async (message) => {
     message.content.includes("Please tell us")
   ) {
     isSleeping = true;
-    await message.channel.send("⚠️ Captcha Detected! Sleeping.");
     await sleep(1000);
     await message.channel.send(`<@${POKETWO_ID}> incense pause`);
 
