@@ -259,14 +259,14 @@ async function performCatch(channel, pokemonName, rawOcrText = null, imageUrl = 
 
     // Create a temporary listener that lives ONLY during the delay
     const watchdog = channel.createMessageCollector({
-        filter: m => m.author.id === POKETWO_ID && (m.content.includes("Congratulations") || message.embeds[0]?.title?.includes("fled")),
+        filter: m => m.author.id === POKETWO_ID && (m.content.includes("Congratulations") || m.embeds[0]?.title?.includes("fled")),
         time: catchDelay
     });
 
     watchdog.on('collect', (m) => {
         // If someone catches ANY pokemon, we assume ours is gone.
         // Or we see fled happended, we assume it is gone.
-        // (You can make this stricter by checking if m.content includes pokemonName, 
+        // (You can make this stricter by checking if m.content includes pokemonName,
         // but Poketwo sometimes doesn't say the name if the user nicknamed it).
         console.log(`[ABORT] Someone else caught the pokemon!`);
         sniped = true;
@@ -422,7 +422,7 @@ client.on("messageCreate", async (message) => {
         await message.channel.send(`<@${POKETWO_ID}> hint`);
 
         // We do NOT return here. Why?
-        // Because we want the OCR (Section 5) to potentially run in parallel 
+        // Because we want the OCR (Section 5) to potentially run in parallel
         // as a backup if the hint takes too long.
     }
 
