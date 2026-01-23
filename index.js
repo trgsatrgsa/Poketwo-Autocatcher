@@ -25,8 +25,6 @@ const customFixes = require("./namefix.json");
 const config = require("./config.json");
 const allowedChannels = config.allowedChannels || [];
 let isSleeping = false;
-const DELAY_MIN = 3000;
-const DELAY_MAX = 8000;
 
 // Standard IDs
 const POKETWO_ID = "716390085896962058";
@@ -187,7 +185,7 @@ client.on("messageCreate", async (message) => {
     message.content.includes("The pokémon is")
   ) {
     let pokemon = [];
-    const catchDelay = getRandomInterval(DELAY_MIN, DELAY_MAX);
+    const catchDelay = getRandomInterval(config.DELAY_MIN, config.DELAY_MAX);
 
     // 1. Try External Library
     try {
