@@ -22,6 +22,10 @@ const stringSimilarity = require("string-similarity");
 const pokemonNames = require("pokemon");
 const customFixes = require("./namefix.json");
 
+// Map to store bad guesses per channel
+// Key: Channel ID, Value: The Raw OCR Text
+const activeBadGuesses = new Map();
+
 // --- CONFIGURATION ---
 APP_CONFIG_FILE = process.env.CFG || "./config.json";
 console.log(`[STATUS] Config Path: ${APP_CONFIG_FILE}`);
@@ -83,6 +87,12 @@ function identifyPokemon(ocrInput) {
     return originalObj ? originalObj.original.toUpperCase() : cleanInput;
   }
 
+  // 4. Manual JSON Fixes first
+  if (customFixes.hasOwnProperty(cleanInput)) {
+    console.log(`[INDENTIFY] Use custom fix on the refine search!`);
+    return customFixes[cleanInput];
+  }
+
   return cleanInput;
 }
 
@@ -127,13 +137,30 @@ async function logUnidentifiedPokemon(imageUrl, guess) {
   }
 }
 
-// Alternative OCR function (offline)
-async function offlineOCR(imageURL) {
-  const { data: { text } } = await Tesseract.recognize(imageURL, 'eng', {
-    logger: m => { } // silent
-  });
-  return text.split('\n')[0].trim();
+function learnCorrection(badNameRaw, realName) {
+  // 1. Clean the bad name exactly like identifyPokemon does
+  const cleanBadKey = badNameRaw.replace(/[^a-zA-Z0-9]/g, "").toUpperCase();
+  const cleanRealValue = realName.toUpperCase().trim();
+
+  // 2. Prevent loops (don't map "PIKACHU" to "PIKACHU")
+  if (cleanBadKey === cleanRealValue.replace(/[^a-zA-Z0-9]/g, "")) return;
+
+  // 3. Update Memory (Immediate effect)
+  customFixes[cleanBadKey] = cleanRealValue;
+  console.log(`[AUTO-LEARN] Learned new fix: "${cleanBadKey}" -> "${cleanRealValue}"`);
+
+  // 4. Save to File (Permanent effect)
+  try {
+    fs.writeFileSync(
+      "./namefix.json",
+      JSON.stringify(customFixes, null, 2), // Pretty print
+      "utf8"
+    );
+  } catch (err) {
+    console.error("[ERROR] Could not save namefix.json:", err);
+  }
 }
+
 
 //------------------------- MAIN BOT LOGIC -----------------------//
 
@@ -201,6 +228,32 @@ client.on("messageCreate", async (message) => {
     !allowedChannels.includes(message.channel.id)
   )
     return;
+
+  // --- NEW: LISTEN FOR "FLED" MESSAGE (The Learning Moment) ---
+  if (
+    message.author.id === POKETWO_ID &&
+    message.embeds.length > 0 &&
+    message.embeds[0].title &&
+    message.embeds[0].title.includes("Wild") &&
+    message.embeds[0].title.includes("fled")
+  ) {
+    const title = message.embeds[0].title;
+    const match = title.match(/Wild (.+) fled/);
+
+    // Check if THIS channel has a pending bad guess
+    if (match && activeBadGuesses.has(message.channel.id)) {
+      const realPokemonName = match[1];
+      const badGuessRaw = activeBadGuesses.get(message.channel.id); // Retrieve guess
+
+      console.log(`[MISSED] Channel ${message.channel.name}: The pokemon was actually: ${realPokemonName}`);
+
+      // TRIGGER THE LEARNING PROCESS
+      learnCorrection(badGuessRaw, realPokemonName);
+
+      // Remove from memory so we don't learn it twice
+      activeBadGuesses.delete(message.channel.id);
+    }
+  }
 
   // --- Send hint if wild pokemon appear ---
   const embedTitle = message.embeds[0]?.title;
@@ -308,14 +361,22 @@ client.on("messageCreate", async (message) => {
         collector.on("collect", async (collected) => {
           if (collected.content.includes("Congratulations")) {
             console.log(`[SUCCESS] Caught ${fixedName}!`);
-            // ... Log success
-          } else if (
-            collected.content.includes("That is the wrong pokémon")
-          ) {
-            console.log(`[FAILED] Incorrect guess. Downloading.`);
+
+            // If we caught it, remove any bad guess data for this channel (cleanup)
+            activeBadGuesses.delete(message.channel.id);
+
+          } else if (collected.content.includes("That is the wrong")) {
+            console.log(`[FAILED] Incorrect guess: ${fixedName} in #${message.channel.name}`);
+
+            // --- STORE GUESS WITH CHANNEL ID ---
+            // Key: Channel ID, Value: Raw Name from OCR
+            activeBadGuesses.set(message.channel.id, rawName);
+
+            // Download image for backup
             await logUnidentifiedPokemon(preferredURL, fixedName);
           }
         });
+
       }, catchDelay);
     }
   }
