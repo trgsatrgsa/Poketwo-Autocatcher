@@ -41,7 +41,7 @@ const CLEAN_POKEMON_LIST = ALL_POKEMON.map((p) => ({
 //------------------------- KEEP-ALIVE --------------------------------//
 const app = express();
 app.get("/", (req, res) => res.status(200).send({ success: "true" }));
-app.listen(process.env.PORT || 3000);
+app.listen(process.env.PORT || 3333);
 
 //------------------------- HELPER FUNCTIONS ----------------------------//
 
