@@ -147,7 +147,7 @@ client.on("ready", () => {
 });
 
 function sleep(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms));
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 client.on("messageCreate", async (message) => {
@@ -167,7 +167,9 @@ client.on("messageCreate", async (message) => {
     message.content.includes("Please tell us")
   ) {
     isSleeping = true;
-    return message.channel.send("⚠️ Captcha Detected! Sleeping.");
+    await message.channel.send("⚠️ Captcha Detected! Sleeping.");
+    await message.channel.send(`<@${POKETWO_ID}> incense pause`);
+    return;
   }
 
   // Guard on only allowed channel
