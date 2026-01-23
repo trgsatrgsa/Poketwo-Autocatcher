@@ -22,7 +22,10 @@ const pokemonNames = require("pokemon");
 const customFixes = require("./namefix.json");
 
 // --- CONFIGURATION ---
-const config = require("./config.json");
+APP_CONFIG_FILE = process.env.CFG || "./config.json";
+console.log(`[STATUS] Config Path: ${APP_CONFIG_FILE}`);
+const config = require(APP_CONFIG_FILE);
+console.log(`[STATUS] Config: ${JSON.stringify(config)}`);
 const allowedChannels = config.allowedChannels || [];
 let isSleeping = false;
 
@@ -41,7 +44,9 @@ const CLEAN_POKEMON_LIST = ALL_POKEMON.map((p) => ({
 //------------------------- KEEP-ALIVE --------------------------------//
 const app = express();
 app.get("/", (req, res) => res.status(200).send({ success: "true" }));
-app.listen(process.env.PORT || 3333);
+DEFAULT_APP_PORT = process.env.PORT || config.DEFAULT_APP_PORT || 3333;
+console.log(`[STATUS] Port: ${DEFAULT_APP_PORT}`);
+app.listen(DEFAULT_APP_PORT);
 
 //------------------------- HELPER FUNCTIONS ----------------------------//
 
@@ -134,8 +139,16 @@ client.on("ready", () => {
     }
     setTimeout(spam, getRandomInterval(1000, 5000));
   }
-  spam();
+
+  if (config.switchSpam) {
+    // start spam service
+    spam();
+  }
 });
+
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
 
 client.on("messageCreate", async (message) => {
   // [Owner Commands omitted for brevity - keep your existing ones]
@@ -168,10 +181,11 @@ client.on("messageCreate", async (message) => {
   const embedTitle = message.embeds[0]?.title;
 
   // Checking if it contains data before proceeding
-  if (embedTitle) {
+  if (config.switchSendHint && embedTitle) {
     // Example: checking if it is a Pokétwo spawn
     if (embedTitle.includes("has appeared")) {
       console.log(embedTitle);
+      await sleep(1000); // Wait for 1 second before hint(1000 milliseconds)
       // Your logic here
       await message.channel.send(`<@${POKETWO_ID}> hint`);
       return;
@@ -215,7 +229,6 @@ client.on("messageCreate", async (message) => {
           const datenow = new Date();
           const formattedDateTimeShort = new Intl.DateTimeFormat("en-GB", {
             dateStyle: "short",
-            timeStyle: "short",
           }).format(datenow);
           if (logChannel)
             logChannel.send(
@@ -232,7 +245,7 @@ client.on("messageCreate", async (message) => {
   }
 
   // --- IMPROVED OCR (PREVIOUSLY DISCUSSED) ---
-  if (HINT_BOT_IDS.includes(message.author.id)) {
+  if (config.switchOcr && HINT_BOT_IDS.includes(message.author.id)) {
     let preferredURL = null;
     message.embeds.forEach((e) => {
       if (
