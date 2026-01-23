@@ -11,10 +11,16 @@
   "author": "akshatop",
   "license": "MIT",
   "dependencies": {
+    "@faker-js/faker": "^10.2.0",
+    "axios": "^1.13.2",
     "debug": "^4.4.3",
     "discord.js-selfbot-v13": "^3.7.1",
     "express": "^5.2.1",
+    "fs": "^0.0.1-security",
     "ocr-space-api-wrapper": "^2.4.2",
-    "pokehint": "^1.4.24"
+    "path": "^0.12.7",
+    "pokehint": "^1.4.24",
+    "pokemon": "^3.3.0",
+    "string-similarity": "^4.0.4"
   }
 }
