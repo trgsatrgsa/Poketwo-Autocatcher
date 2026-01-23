@@ -1,9 +1,17 @@
 {
-  "ocrSpaceApiKey" : "Put Your OCR SPACE KEY", 
-  "spamChannelID" : "Put Your Spam Channel ID", 
-  "logChannelID" : "Put Your Log Channel ID", 
-  "errorChannelID" : "Put Your Error Channel ID", 
-  "OwnerID" : "Put Your Main Account ID",
-  "TOKEN" : "Put Your TOKEN(if in replit , I'd recommend to put it in secret rather than here)"
+  "switchSpam": false,
+  "switchOcr": false,
+  "DEFAULT_APP_PORT": 3333,
+  "DELAY_MIN": 3000,
+  "DELAY_MAX": 5000,
+  "TOKEN": "XXXXXXXXX",
+  "OwnerID": "XXXXXXXXX",
+  "spamChannelID": "XXXXXXXXX",
+  "logChannelID": "",
+  "ocrSpaceApiKey": "",
+  "allowedChannels": [
+    "XXXXXXXXX",
+    "XXXXXXXXX",
+    "XXXXXXXXX"
+  ]
 }
-

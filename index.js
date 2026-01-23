@@ -1,307 +1,469 @@
 /*
-@Developer: 🔥⃤•AK_ØPᵈᵉᵛ✓#6326 / akshatop
-Name: Poketwo-Autocatcher
-Version: V1.3.2
-Description: bot to help users with catching pokemons
-@Supported: poketwo/pokemon
-STAR THIS REPO(https://github.com/AkshatOP/Poketwo-Autocatcher) FOR IT TO WORK
+Name: General Poketwo-Autocatcher
+Version: 2026 Edition
+Description: A generalized, human-like bot to assist with catching Pokemons.
 */
-const Discord = require("discord.js-selfbot-v13")
-const client = new Discord.Client({
-    checkUpdate: false
-});
-const express = require('express');
-const {
-    solveHint,
-    checkRarity
-} = require("pokehint")
-const {
-    ocrSpace
-} = require('ocr-space-api-wrapper');
 
-const config = require('./config.json')
-const json = require('./namefix.json');
-const allowedChannels = []; // Add your allowed channel IDs to this array or leave it like [] if you want to it to catch from all channels
+const Discord = require("discord.js-selfbot-v13");
+const client = new Discord.Client({ checkUpdate: false });
+const express = require("express");
+const fs = require("fs");
+const path = require("path");
+const axios = require("axios");
+const { faker } = require("@faker-js/faker");
+const Tesseract = require('tesseract.js');
+
+// Import external solvers
+const { solveHint, checkRarity } = require("pokehint");
+const { ocrSpace } = require("ocr-space-api-wrapper");
+
+// Import Smart Matching Libraries
+const stringSimilarity = require("string-similarity");
+const pokemonNames = require("pokemon");
+const customFixes = require("./namefix.json");
+
+// Map to store bad guesses per channel
+// Key: Channel ID, Value: The Raw OCR Text
+const activeBadGuesses = new Map();
+
+// --- CONFIGURATION ---
+APP_CONFIG_FILE = process.env.CFG || "./config.json";
+console.log(`[STATUS] Config Path: ${APP_CONFIG_FILE}`);
+const config = require(APP_CONFIG_FILE);
+console.log(`[STATUS] Config: ${JSON.stringify(config)}`);
+const allowedChannels = config.allowedChannels || [];
 let isSleeping = false;
 
+// Standard IDs
+const POKETWO_ID = "716390085896962058";
+const HINT_BOT_IDS = ["696161886734909481", "874910942490677270"];
 
-//------------------------- KEEP-ALIVE--------------------------------//
+// 1. PRELOAD POKEMON LIST (The Brain)
+// We get all names, then clean them (remove special chars) for better matching
+const ALL_POKEMON = pokemonNames.all();
+const CLEAN_POKEMON_LIST = ALL_POKEMON.map((p) => ({
+  original: p,
+  clean: p.replace(/[^a-zA-Z0-9]/g, "").toUpperCase(),
+}));
 
+//------------------------- KEEP-ALIVE --------------------------------//
 const app = express();
-if (Number(process.version.slice(1).split(".")[0]) < 8) throw new Error("Node 8.0.0 or higher is required. Update Node on your system.");
-app.get("/", (req, res) => {
-    res.status(200).send({
-        success: "true"
-    });
-});
-app.listen(process.env.PORT || 3000);
+app.get("/", (req, res) => res.status(200).send({ success: "true" }));
+DEFAULT_APP_PORT = process.env.PORT || config.DEFAULT_APP_PORT || 3333;
+console.log(`[STATUS] Port: ${DEFAULT_APP_PORT}`);
+app.listen(DEFAULT_APP_PORT);
 
-//--------------------------------------------------------------//
+//------------------------- HELPER FUNCTIONS ----------------------------//
 
-//-------------------------SOME EXTRA FUNCTIONS----------------------------//
+function getRandomInterval(min, max) {
+  return Math.floor(Math.random() * (max - min + 1)) + min;
+}
 
+// --- NEW: SMART POKEMON IDENTIFIER (For OCR) ---
+function identifyPokemon(ocrInput) {
+  // 1. Clean the input
+  const cleanInput = ocrInput.replace(/[^a-zA-Z0-9]/g, "").toUpperCase();
+  console.log(`[INDENTIFY] Clean input from ${ocrInput} -> ${cleanInput}`);
 
-function findOutput(input) {
-    if (json.hasOwnProperty(input)) {
-        return json[input];
-    } else {
-        return input;
-    }
+  // 2. Check Manual JSON Fixes first
+  if (customFixes.hasOwnProperty(cleanInput)) {
+    console.log(`[INDENTIFY] Use custom fix!`);
+    return customFixes[cleanInput];
+  }
+
+  // 3. Fuzzy Match against the list
+  // We match against the 'clean' versions of pokemon names
+  const justNames = CLEAN_POKEMON_LIST.map((p) => p.clean);
+  const matches = stringSimilarity.findBestMatch(cleanInput, justNames);
+  const bestMatch = matches.bestMatch;
+
+  // Confidence check (>50%)
+  if (bestMatch.rating > 0.5) {
+    // Find the original name based on the matched clean name
+    const originalObj = CLEAN_POKEMON_LIST.find(
+      (p) => p.clean === bestMatch.target
+    );
+    console.log(`[INDENTIFY] Use fuzzy match!`);
+    return originalObj ? originalObj.original.toUpperCase() : cleanInput;
+  }
+
+  return cleanInput;
+}
+
+// --- NEW: LOCAL HINT SOLVER (Fallback Logic) ---
+function solveHintLocally(content) {
+  // Content format: "The pokémon is T_rt_ig."
+  // 1. Extract the pattern
+  const patternMatch = content.match(/The pokémon is (.*)\./);
+  if (!patternMatch) return [];
+
+  let pattern = patternMatch[1];
+
+  // 2. Convert Poketwo's hint format to Regex
+  // "\_" (escaped underscore) -> "." (wildcard)
+  // " " (space) -> ".*" or just space? Poketwo usually escapes spaces too or leaves them.
+  // Let's assume standard Poketwo hint: "T _ r t _ i g" or "T_rt_ig" logic
+
+  // Remove backslashes used for escaping
+  pattern = pattern.replace(/\\/g, "");
+
+  // Replace underscore with regex dot (.)
+  const regexString = "^" + pattern.replace(/_/g, ".") + "$";
+  const regex = new RegExp(regexString, "i"); // Case insensitive
+
+  // 3. Filter our local list
+  const matches = ALL_POKEMON.filter((p) => regex.test(p));
+  return matches;
+}
+
+async function logUnidentifiedPokemon(imageUrl, guess) {
+  const dir = "./unidentified_pokemon";
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir);
+  const safeGuess = guess.replace(/[^a-z0-9]/gi, "_").toLowerCase();
+  const timestamp = Date.now();
+  const imagePath = path.join(dir, `${timestamp}_guess_${safeGuess}.png`);
+  try {
+    const response = await axios({ url: imageUrl, responseType: "stream" });
+    response.data.pipe(fs.createWriteStream(imagePath));
+    console.log(`[LOGGER] Saved unidentified Pokemon image to ${imagePath}`);
+  } catch (err) {
+    console.error("[ERROR] Failed to download image.");
+  }
+}
+
+function learnCorrection(badNameRaw, realName) {
+  // 1. Clean the bad name exactly like identifyPokemon does
+  const cleanBadKey = badNameRaw.replace(/[^a-zA-Z0-9]/g, "").toUpperCase();
+  const cleanRealValue = realName.toUpperCase().trim();
+
+  // 2. Prevent loops (don't map "PIKACHU" to "PIKACHU")
+  if (cleanBadKey === cleanRealValue.replace(/[^a-zA-Z0-9]/g, "")) return;
+
+  // 3. Update Memory (Immediate effect)
+  customFixes[cleanBadKey] = cleanRealValue;
+  console.log(`[AUTO-LEARN] Learned new fix: "${cleanBadKey}" -> "${cleanRealValue}"`);
+
+  // 4. Save to File (Permanent effect)
+  try {
+    fs.writeFileSync(
+      "./namefix.json",
+      JSON.stringify(customFixes, null, 2), // Pretty print
+      "utf8"
+    );
+  } catch (err) {
+    console.error("[ERROR] Could not save namefix.json:", err);
+  }
 }
 
 
-function checkSpawnsRemaining(string) {
-    const match = string.match(/Spawns Remaining: (\d+)/);
-    if (match) {
-        const spawnsRemaining = parseInt(match[1]);
-        console.log(spawnsRemaining)
+//------------------------- MAIN BOT LOGIC -----------------------//
+
+client.on("ready", () => {
+  console.log(`[STATUS] Account: ${client.user.username} is ONLINE.`);
+  const channel = client.channels.cache.get(config.spamChannelID);
+
+  function spam() {
+    if (!isSleeping && channel) {
+      const legitMessage = faker.lorem.words({ min: 1, max: 4 });
+      channel.send(legitMessage);
     }
-}
-//--------------------------------------------------------------------------//
+    setTimeout(spam, getRandomInterval(30000, 60000));
+  }
 
-//-------------------------READY HANDLER+SPAMMER-----------------------//
-
-client.on('ready', () => {
-    console.log("https://github.com/AkshatOP/Poketwo-Autocatcher - Made by 🔥⃤•AK_ØPᵈᵉᵛ✓#6326 / akshatop")
-    console.log(`Acount: ${client.user.username} is ONLINE, `)
-    console.log("Note: When your using Incense then make sure it occurs in a separate channel where hint bots like pokename/sierra aren't enabled to send message there!")
-    console.log("Use $help to know about commands")
-
-    const channel = client.channels.cache.get(config.spamChannelID)
-
-    function getRandomInterval(min, max) {
-        return Math.floor(Math.random() * (max - min + 1)) + min;
-    }
-
-    function spam() {
-        const result = Math.random().toString(36).substring(2, 15);
-        channel.send(result + "(Made by 🔥⃤•AK_ØPᵈᵉᵛ✓#6326) ")
-        const randomInterval = getRandomInterval(1500, 5000); // Random interval for spam between 1 second and 5 seconds
-        setTimeout(spam, randomInterval);
-    }
+  if (config.switchSpam) {
+    // start spam service
     spam();
-})
+  }
+});
 
-//------------------------------------------------------------//
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
+async function reportCaught(name) {
+  try {
+    const rarity = await checkRarity(name);
+    const logChannel = client.channels.cache.get(config.logChannelID);
+    const datenow = new Date();
+    const formattedDateTimeShort = new Intl.DateTimeFormat("en-GB", {
+      dateStyle: "short",
+      timeStyle: "long",
+    }).format(datenow);
+    if (logChannel)
+      logChannel.send(
+        `Caught **${name}** (Rarity: ${rarity}) [${formattedDateTimeShort}]`
+      );
+  } catch (e) {
+    console.log(`[ERR] Fail to get rarity, ${e}`);
+  }
+}
 
-//-------------------------Anti-Crash-------------------------//
+client.on("messageCreate", async (message) => {
+  const catchDelay = getRandomInterval(config.DELAY_MIN, config.DELAY_MAX);
 
-process.on("unhandledRejection", (reason, p) => {
-    if (reason == "Error: Unable to identify that pokemon.") {} else {
-        console.log(" [antiCrash] :: Unhandled Rejection/Catch");
-        console.log(reason, p);
+  // [Owner Commands omitted for brevity - keep your existing ones]
+  if (
+    message.author.id === config.OwnerID &&
+    message.content === "$captcha_completed"
+  ) {
+    isSleeping = false;
+    return message.channel.send("✅ Autocatcher Resumed!");
+  }
+  if (isSleeping) return;
+
+  // CAPTCHA
+  if (
+    message.author.id === POKETWO_ID &&
+    message.content.includes("Please tell us")
+  ) {
+    isSleeping = true;
+    await sleep(1000);
+    await message.channel.send(`<@${POKETWO_ID}> incense pause`);
+
+    // Open with url
+    const urlRegex = /(https?:\/\/[^\s]+)/;
+    const match = message.content.match(urlRegex);
+    const captchaUrl = match[0];
+
+    // Dynamic import works in CommonJS for ESM-only packages
+    import("open").then((openModule) => {
+      const open = openModule.default;
+      open(captchaUrl);
+    });
+    return;
+  }
+
+  // Guard on only allowed channel
+  if (
+    allowedChannels.length > 0 &&
+    !allowedChannels.includes(message.channel.id)
+  )
+    return;
+
+  // --- NEW: LISTEN FOR "FLED" MESSAGE (The Learning Moment) ---
+  if (
+    message.author.id === POKETWO_ID &&
+    message.embeds.length > 0 &&
+    message.embeds[0].title &&
+    message.embeds[0].title.includes("Wild") &&
+    message.embeds[0].title.includes("fled")
+  ) {
+    const title = message.embeds[0].title;
+    const match = title.match(/Wild (.+) fled/);
+
+    // Check if THIS channel has a pending bad guess
+    if (match && activeBadGuesses.has(message.channel.id)) {
+      const realPokemonName = match[1];
+      const badGuessRaw = activeBadGuesses.get(message.channel.id); // Retrieve guess
+
+      console.log(`[MISSED] Channel ${message.channel.name}: The pokemon was actually: ${realPokemonName}`);
+
+      // TRIGGER THE LEARNING PROCESS
+      learnCorrection(badGuessRaw, realPokemonName);
+
+      // Remove from memory so we don't learn it twice
+      activeBadGuesses.delete(message.channel.id);
     }
-});
-process.on("uncaughtException", (err, origin) => {
-    console.log(" [antiCrash] :: Uncaught Exception/Catch");
-    console.log(err, origin);
-});
-process.on("uncaughtExceptionMonitor", (err, origin) => {
-    console.log(" [antiCrash] :: Uncaught Exception/Catch (MONITOR)");
-    console.log(err, origin);
-});
-process.on("multipleResolves", (type, promise, reason) => {
-    console.log(" [antiCrash] :: Multiple Resolves");
-    console.log(type, promise, reason);
-});
+  }
 
-//------------------------------------------------------------//
+  // --- Send hint if wild pokemon appear ---
+  const embedTitle = message.embeds[0]?.title;
 
-//----------------------------AUTOCATCHER--------------------------------------//
+  // // Checking if it contains data before proceeding
+  // if (config.switchSendHint && embedTitle) {
+  //   // Example: checking if it is a Pokétwo spawn
+  //   if (embedTitle.includes("has appeared")) {
+  //     console.log(embedTitle);
+  //     await sleep(1000); // Wait for 1 second before hint(1000 milliseconds)
+  //     // Your logic here
+  //     await message.channel.send(`<@${POKETWO_ID}> hint`);
+  //     return;
+  //   }
+  // }
 
-client.on('messageCreate', async message => {
-    if (message.content === "$captcha_completed" && message.author.id === config.OwnerID) {
-        isSleeping = false;
-        message.channel.send("Autocatcher Started!")
+  // // --- IMPROVED HINT SOLVER ---
+  // if (
+  //   message.author.id === POKETWO_ID &&
+  //   message.content.includes("The pokémon is")
+  // ) {
+  //   let pokemon = [];
+  //   // 1. Try External Library
+  //   try {
+  //     pokemon = await solveHint(message);
+  //   } catch (err) {
+  //     console.log("[HINT] External lib error, trying local...");
+  //   }
+
+  //   // 2. Fallback: If external lib failed, use LOCAL SOLVER
+  //   if (!pokemon || pokemon.length === 0) {
+  //     console.log("[HINT] External lib returned nothing. Using Local Logic.");
+  //     pokemon = solveHintLocally(message.content);
+  //   }
+
+  //   // 3. Catch if we found something
+  //   if (pokemon.length > 0) {
+  //     const name = pokemon[0]; // Take the first best guess
+  //     console.log(
+  //       `[HINT SOLVED] Result: ${name}. Catching in ${catchDelay / 1000}s.`
+  //     );
+
+  //     setTimeout(async () => {
+  //       await message.channel.send(`<@${POKETWO_ID}> catch ${name}`);
+  //       // Optional: Check Rarity
+  //       try {
+  //         const rarity = await checkRarity(name);
+  //         const logChannel = client.channels.cache.get(config.logChannelID);
+  //         const datenow = new Date();
+  //         const formattedDateTimeShort = new Intl.DateTimeFormat("en-GB", {
+  //           dateStyle: "short",
+  //           timeStyle: "long",
+  //         }).format(datenow);
+  //         if (logChannel)
+  //           logChannel.send(
+  //             `Caught **${name}** (Rarity: ${rarity}) [${formattedDateTimeShort}]`
+  //           );
+  //       } catch (e) {
+  //         console.log(`[ERR] Fail to get rarity, ${e}`);
+  //       }
+  //     }, catchDelay);
+  //   } else {
+  //     console.log("[HINT FAILED] Could not solve hint locally or externally.");
+  //   }
+  //   return;
+  // }
+
+  // Tesseract: OCR
+  if (true) {
+    let preferredURL = null;
+    message.embeds.forEach((e) => {
+      if (
+        e.image &&
+        (e.image.url.includes("prediction.png") ||
+          e.image.url.includes("embed.png"))
+      ) {
+        preferredURL = e.image.url;
+      }
+    });
+    if (preferredURL) {
+
+
+      const { data: { text } } = await Tesseract.recognize(preferredURL, 'eng');
+      const rawName = text.split('\n')[0].trim();
+
+      // USE NEW IDENTIFY LOGIC
+      const fixedName = identifyPokemon(rawName);
+
+      // catch delay
+      console.log(
+        `[TSR OCR] Identified: ${fixedName} (Raw: ${rawName}). Waiting ${catchDelay / 1000
+        }s.`
+      );
+
+      setTimeout(async () => {
+        await message.channel.send(`<@${POKETWO_ID}> catch ${fixedName}`);
+
+        const filter = (msg) => msg.author.id === POKETWO_ID;
+        const collector = message.channel.createMessageCollector({
+          filter,
+          max: 1,
+          time: 15000,
+        });
+
+        collector.on("collect", async (collected) => {
+          if (collected.content.includes("Congratulations")) {
+            console.log(`[SUCCESS] Caught ${fixedName}!`);
+
+            // If we caught it, remove any bad guess data for this channel (cleanup)
+            activeBadGuesses.delete(message.channel.id);
+
+            // report to log channel
+            await reportCaught(fixedName);
+
+          } else if (collected.content.includes("That is the wrong")) {
+            console.log(`[FAILED] Incorrect guess: ${fixedName} in #${message.channel.name}`);
+
+            // --- STORE GUESS WITH CHANNEL ID ---
+            // Key: Channel ID, Value: Raw Name from OCR
+            activeBadGuesses.set(message.channel.id, rawName);
+
+            // Download image for backup
+            await logUnidentifiedPokemon(preferredURL, fixedName);
+          }
+        });
+
+      }, catchDelay);
     }
+  }
 
-    if (message.content === "$help" && message.author.id === config.OwnerID) {
+  // --- IMPROVED OCR (PREVIOUSLY DISCUSSED) ---
+  if (config.switchOcr && HINT_BOT_IDS.includes(message.author.id)) {
+    let preferredURL = null;
+    message.embeds.forEach((e) => {
+      if (
+        e.image &&
+        (e.image.url.includes("prediction.png") ||
+          e.image.url.includes("embed.png"))
+      ) {
+        preferredURL = e.image.url;
+      }
+    });
 
-        await message.channel.send(
-            "``` Poketwo-Autocatcher\n Link: https://github.com/AkshatOP/Poketwo-Autocatcher\n\n $captcha_completed : Use to restart the bot once captcha is solved\n $say <content> : Make the bot say whatever you want\n $react <messageID> : React with ✅ emoji\n $click <messageID> : Clicks the button which has ✅ emoji\n $help : To show this message ```"
-        )
-    }
+    if (preferredURL) {
+      try {
+        const res1 = await ocrSpace(preferredURL, {
+          apiKey: config.ocrSpaceApiKey,
+        });
 
-    if (!isSleeping) {
-
-        if (message.content.includes("Please tell us") && message.author.id === "716390085896962058") {
-            isSleeping = true;
-            message.channel.send("Autocatcher Stopped , Captcha Detected! Use `$captcha_completed` once the captcha is solved ");
-            setTimeout(async function() {
-                isSleeping = false
-            }, 18000000) //5 hours
-
-
-
-        } else if (message.content.startsWith("$say") && message.author.id == config.OwnerID) {
-            let say = message.content.split(" ").slice(1).join(" ")
-            message.channel.send(say)
-
-        } else if (message.content.startsWith("$react") && message.author.id == config.OwnerID) {
-            let msg
-            try {
-                const args = message.content.slice(1).trim().split(/ +/g)
-                msg = await message.channel.messages.fetch(args[1])
-            } catch (err) {
-                message.reply(`Please Specify the message ID as an arguement like "$react <messageID>"`)
-            }
-            if (msg) {
-                try {
-                    msg.react("✅")
-                    message.react("✅")
-                } catch (err) {
-                    message.react("❌")
-                    console.log(err)
-                }
-            }
-
-
-        } else if (message.content.startsWith("$click") && message.author.id == config.OwnerID) {
-
-            let msg
-            try {
-                var args = message.content.slice(1).trim().split(/ +/g)
-                msg = await message.channel.messages.fetch(args[1])
-            } catch (err) {
-                message.reply(`Please Specify the message ID as an arguement like "$click <messageID>".`)
-            }
-
-            if (msg) {
-                try {
-                    await msg.clickButton();
-                    message.react("✅")
-                } catch (err) {
-                    message.react("❌")
-                    console.log(err)
-                }
-            }
-        } else if (message.content == "That is the wrong pokémon!" && message.author.id == "716390085896962058") {
-            message.channel.send(`<@716390085896962058> h`)
-        } else if (message.author.id == "716390085896962058") {
-            if (message?.embeds[0]?.footer?.text.includes("Spawns Remaining")) {
-                await message.channel.send(`<@716390085896962058> h`)
-                if ((message.embeds[0]?.footer?.text == "Incense: Active.\nSpawns Remaining: 0.")) {
-                    message.channel.send(`<@716390085896962058> buy incense`)
-                }
-
-            } else if (message.content.includes("The pokémon is")) {
-                let rarity;
-                const pokemon = await solveHint(message)
-                console.log(`Catching ${pokemon[0]}`)
-                await message.channel.send(`<@716390085896962058> c ${pokemon[0]}`)
-
-                console.log("[" + message.guild.name + "/#" + message.channel.name + "] " + pokemon[0])
-                try{
-                 rarity = await checkRarity(`${pokemon[0]}`)
-                } catch {
-                    rarity = "Not Found in Database";
-                }
-
-                const channel6 = client.channels.cache.get(config.logChannelID)
-                channel6.send("[" + message.guild.name + "/#" + message.channel.name + "] " + "**__" + pokemon[0] + "__** " + "Rarity " + rarity + " made by 🔥⃤•AK_ØPᵈᵉᵛ✓#6326")
-
-
-            }
-
-        } else {
-
-            const Pokebots = ["696161886734909481", "874910942490677270"]; //sierra ,pokename
-            if (allowedChannels.length > 0 && !allowedChannels.includes(message.channel.id)) {
-                return;
-            }
-            if (Pokebots.includes(message.author.id)) {
-                let preferredURL = null;
-                message.embeds.forEach((e) => {
-                    if (e.image) {
-                        const imageURL = e.image.url;
-                        if (imageURL.includes("prediction.png")) {
-                            preferredURL = imageURL;
-                        } else if (imageURL.includes("embed.png") && !preferredURL) {
-                            preferredURL = imageURL;
-                        }
-                    }
-                });
-
-                if (preferredURL) {
-                    let url = preferredURL;
-
-
-                    async function main() {
-                        try {
-                            const res1 = await ocrSpace(url, {
-                                apiKey: `${config.ocrSpaceApiKey}`
-                            });
-                            const name1 = res1.ParsedResults[0].ParsedText.split('\r')[0];
-                            const name5 = name1.replace(/Q/g, 'R');
-                            const name = findOutput(name5);
-
-                            const delay = Math.floor(Math.random() * 6 + 5) * 1000; //interval from 5-10seconds
-                            console.log("A Pokemon Spawned, Catching in " + (delay / 1000) + "seconds")
-                            setTimeout(async () => {
-                                message.channel.send(`<@716390085896962058> c ${name}`)
-                                    .then(a => {}).catch(error => {
-                                        console.error(error);
-                                        const channel = client.channels.cache.get(config.errorChannelID)
-                                        channel.send(error)
-                                    })
-
-
-                                const filter = (msg) => msg.author.id === "716390085896962058";
-                                const collector = new Discord.MessageCollector(message.channel, filter, {
-                                    max: 1,
-                                    time: 13000
-                                }); // Collect only one message in 10 seconds
-
-                                collector.on('collect', async (collected) => {
-
-
-                                    if (collected.content.includes("Congratulations")) {
-
-                                        function capitalizeFirstLetter(str) {
-                                            return str.charAt(0).toUpperCase() + str.slice(1).toLowerCase();
-                                        }
-
-                                        let rareity;
-                                        const name2 = capitalizeFirstLetter(name)
-                                        try{
-                                        rareity = await checkRarity(`${name2}`)
-                                        } catch {
-                                            rareity = "Not Found in Database"
-                                        }
-                                        const logchannel = client.channels.cache.get(config.logChannelID)
-                                        logchannel.send("[" + collected.guild.name + "/#" + collected.channel.name + "] " + "**__" + name2 + "__** " + "Rarity " + rareity + " made by 🔥⃤•AK_ØPᵈᵉᵛ✓#6326").then(b => {}).catch(error => {
-
-                                            console.error(error);
-                                            const channel = client.channels.cache.get(config.errorChannelID)
-                                            channel.send(error)
-                                        })
-
-                                        collector.stop();
-
-
-                                    }
-
-
-
-                                });
-
-
-                            }, delay);
-
-
-                        } catch (error) {
-                            console.error(error);
-                            const channel = client.channels.cache.get(config.errorChannelID)
-                            channel.send(error)
-                        }
-                    }
-                    main()
-                }
-
-            }
-
+        // CHECK IF OCR FOUND TEXT
+        if (
+          !res1.ParsedResults ||
+          res1.ParsedResults.length === 0 ||
+          !res1.ParsedResults[0].ParsedText
+        ) {
+          console.log("[OCR FAILED] Empty result. Saving image.");
+          await logUnidentifiedPokemon(preferredURL, "NO_TEXT");
+          return;
         }
+
+        const rawName = res1.ParsedResults[0].ParsedText.split("\r")[0];
+
+        // USE NEW IDENTIFY LOGIC
+        const fixedName = identifyPokemon(rawName);
+
+        // catch delay
+        console.log(
+          `[OCR] Identified: ${fixedName} (Raw: ${rawName}). Waiting ${catchDelay / 1000
+          }s.`
+        );
+
+        setTimeout(async () => {
+          await message.channel.send(`<@${POKETWO_ID}> catch ${fixedName}`);
+
+          const filter = (msg) => msg.author.id === POKETWO_ID;
+          const collector = message.channel.createMessageCollector({
+            filter,
+            max: 1,
+            time: 15000,
+          });
+
+          collector.on("collect", async (collected) => {
+            if (collected.content.includes("Congratulations")) {
+              console.log(`[SUCCESS] Caught ${fixedName}!`);
+              // ... Log success
+            } else if (
+              collected.content.includes("That is the wrong pokémon")
+            ) {
+              console.log(`[FAILED] Incorrect guess. Downloading.`);
+              await logUnidentifiedPokemon(preferredURL, fixedName);
+            }
+          });
+        }, catchDelay);
+      } catch (error) {
+        console.error("[ERROR] OCR Processing failed.", error.message);
+        await logUnidentifiedPokemon(preferredURL, "OCR_ERROR");
+      }
     }
-})
-client.login(config.TOKEN) //use process.env.TOKEN if you are using it in repl.it
+  }
+});
+
+client.login(config.TOKEN);
