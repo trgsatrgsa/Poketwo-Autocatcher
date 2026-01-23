@@ -180,6 +180,24 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+async function reportCaught(name) {
+  try {
+    const rarity = await checkRarity(name);
+    const logChannel = client.channels.cache.get(config.logChannelID);
+    const datenow = new Date();
+    const formattedDateTimeShort = new Intl.DateTimeFormat("en-GB", {
+      dateStyle: "short",
+      timeStyle: "long",
+    }).format(datenow);
+    if (logChannel)
+      logChannel.send(
+        `Caught **${name}** (Rarity: ${rarity}) [${formattedDateTimeShort}]`
+      );
+  } catch (e) {
+    console.log(`[ERR] Fail to get rarity, ${e}`);
+  }
+}
+
 client.on("messageCreate", async (message) => {
   const catchDelay = getRandomInterval(config.DELAY_MIN, config.DELAY_MAX);
 
@@ -357,6 +375,9 @@ client.on("messageCreate", async (message) => {
 
             // If we caught it, remove any bad guess data for this channel (cleanup)
             activeBadGuesses.delete(message.channel.id);
+
+            // report to log channel
+            await reportCaught(fixedName);
 
           } else if (collected.content.includes("That is the wrong")) {
             console.log(`[FAILED] Incorrect guess: ${fixedName} in #${message.channel.name}`);
