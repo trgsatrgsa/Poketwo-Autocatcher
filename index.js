@@ -213,9 +213,13 @@ client.on("messageCreate", async (message) => {
           const rarity = await checkRarity(name);
           const logChannel = client.channels.cache.get(config.logChannelID);
           const datenow = new Date();
+          const formattedDateTimeShort = new Intl.DateTimeFormat("en-GB", {
+            dateStyle: "short",
+            timeStyle: "short",
+          }).format(datenow);
           if (logChannel)
             logChannel.send(
-              `Caught **${name}** (Rarity: ${rarity}) [${datenow}]`
+              `Caught **${name}** (Rarity: ${rarity}) [${formattedDateTimeShort}]`
             );
         } catch (e) {
           console.log(`[ERR] Fail to get rarity, ${e}`);
