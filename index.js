@@ -229,6 +229,7 @@ client.on("messageCreate", async (message) => {
           const datenow = new Date();
           const formattedDateTimeShort = new Intl.DateTimeFormat("en-GB", {
             dateStyle: "short",
+            timeStyle: "long",
           }).format(datenow);
           if (logChannel)
             logChannel.send(
