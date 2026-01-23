@@ -11,6 +11,7 @@ const fs = require("fs");
 const path = require("path");
 const axios = require("axios");
 const { faker } = require("@faker-js/faker");
+const Tesseract = require('tesseract.js');
 
 // Import external solvers
 const { solveHint, checkRarity } = require("pokehint");
@@ -126,6 +127,14 @@ async function logUnidentifiedPokemon(imageUrl, guess) {
   }
 }
 
+// Alternative OCR function (offline)
+async function offlineOCR(imageURL) {
+  const { data: { text } } = await Tesseract.recognize(imageURL, 'eng', {
+    logger: m => { } // silent
+  });
+  return text.split('\n')[0].trim();
+}
+
 //------------------------- MAIN BOT LOGIC -----------------------//
 
 client.on("ready", () => {
@@ -137,7 +146,7 @@ client.on("ready", () => {
       const legitMessage = faker.lorem.words({ min: 1, max: 4 });
       channel.send(legitMessage);
     }
-    setTimeout(spam, getRandomInterval(1000, 5000));
+    setTimeout(spam, getRandomInterval(30000, 60000));
   }
 
   if (config.switchSpam) {
@@ -196,17 +205,17 @@ client.on("messageCreate", async (message) => {
   // --- Send hint if wild pokemon appear ---
   const embedTitle = message.embeds[0]?.title;
 
-  // Checking if it contains data before proceeding
-  if (config.switchSendHint && embedTitle) {
-    // Example: checking if it is a Pokétwo spawn
-    if (embedTitle.includes("has appeared")) {
-      console.log(embedTitle);
-      await sleep(1000); // Wait for 1 second before hint(1000 milliseconds)
-      // Your logic here
-      await message.channel.send(`<@${POKETWO_ID}> hint`);
-      return;
-    }
-  }
+  // // Checking if it contains data before proceeding
+  // if (config.switchSendHint && embedTitle) {
+  //   // Example: checking if it is a Pokétwo spawn
+  //   if (embedTitle.includes("has appeared")) {
+  //     console.log(embedTitle);
+  //     await sleep(1000); // Wait for 1 second before hint(1000 milliseconds)
+  //     // Your logic here
+  //     await message.channel.send(`<@${POKETWO_ID}> hint`);
+  //     return;
+  //   }
+  // }
 
   // --- IMPROVED HINT SOLVER ---
   if (
@@ -259,6 +268,58 @@ client.on("messageCreate", async (message) => {
     return;
   }
 
+  // Tesseract: OCR
+  if (true) {
+    let preferredURL = null;
+    message.embeds.forEach((e) => {
+      if (
+        e.image &&
+        (e.image.url.includes("prediction.png") ||
+          e.image.url.includes("embed.png"))
+      ) {
+        preferredURL = e.image.url;
+      }
+    });
+    if (preferredURL) {
+
+
+      const { data: { text } } = await Tesseract.recognize(preferredURL, 'eng');
+      const rawName = text.split('\n')[0].trim();
+
+      // USE NEW IDENTIFY LOGIC
+      const fixedName = identifyPokemon(rawName);
+
+      // catch delay
+      console.log(
+        `[TSR OCR] Identified: ${fixedName} (Raw: ${rawName}). Waiting ${catchDelay / 1000
+        }s.`
+      );
+
+      setTimeout(async () => {
+        await message.channel.send(`<@${POKETWO_ID}> catch ${fixedName}`);
+
+        const filter = (msg) => msg.author.id === POKETWO_ID;
+        const collector = message.channel.createMessageCollector({
+          filter,
+          max: 1,
+          time: 15000,
+        });
+
+        collector.on("collect", async (collected) => {
+          if (collected.content.includes("Congratulations")) {
+            console.log(`[SUCCESS] Caught ${fixedName}!`);
+            // ... Log success
+          } else if (
+            collected.content.includes("That is the wrong pokémon")
+          ) {
+            console.log(`[FAILED] Incorrect guess. Downloading.`);
+            await logUnidentifiedPokemon(preferredURL, fixedName);
+          }
+        });
+      }, catchDelay);
+    }
+  }
+
   // --- IMPROVED OCR (PREVIOUSLY DISCUSSED) ---
   if (config.switchOcr && HINT_BOT_IDS.includes(message.author.id)) {
     let preferredURL = null;
@@ -296,8 +357,7 @@ client.on("messageCreate", async (message) => {
 
         // catch delay
         console.log(
-          `[OCR] Identified: ${fixedName} (Raw: ${rawName}). Waiting ${
-            catchDelay / 1000
+          `[OCR] Identified: ${fixedName} (Raw: ${rawName}). Waiting ${catchDelay / 1000
           }s.`
         );
 
