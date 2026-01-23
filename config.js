@@ -39,13 +39,6 @@ module.exports = {
         "XXXXXXXXX"
     ],
 
-    // LIST 2: PUBLIC / COMMUNITY CHANNELS (NEW!)
-    // In these channels, the bot will "Stealth Mode":
-    // 1. It will NOT catch every single pokemon (to look less suspicious).
-    // 2. It will wait longer before catching.
-    publicChannels: [
-    ],
-
     // ============================
     // 3. REPORTING & LOGGING
     // ============================
@@ -90,17 +83,5 @@ module.exports = {
     // Randomize maximum time to spam in spameChannel. (default to 60000ms = 60s)
     spamDelayMax: 60000,
 
-
-    // ============================
-    // SECTION 4b: STEALTH SETTINGS (For Public Channels Only)
-    // ============================
-
-    // STEALTH SETTINGS (For Public Channels Only)
-    // The bot will skip this % of spawns in public channels.
-    // 90 = skips 90% of pokemon (catches 10%).
-    publicSkipChance: 90,
-
-    // Extra time (in seconds) to wait in public channels (simulating human reaction).
-    publicExtraDelay: 4,
 
 };
