@@ -10,6 +10,7 @@ const path = require("path");
 const axios = require("axios");
 const { faker } = require("@faker-js/faker");
 const Tesseract = require('tesseract.js');
+const { solveHint, checkRarity } = require("pokehint");
 const { ocrSpace } = require("ocr-space-api-wrapper");
 const stringSimilarity = require("string-similarity");
 const pokemonNames = require("pokemon");
@@ -80,6 +81,33 @@ function learnCorrection(badRaw, realName) {
     console.log(`[LEARN] Associated "${cleanBad}" with "${cleanReal}"`);
 }
 
+// --- NEW: LOCAL HINT SOLVER (Fallback Logic) ---
+function solveHintLocally(content) {
+    // Content format: "The pokémon is T_rt_ig."
+    // 1. Extract the pattern
+    const patternMatch = content.match(/The pokémon is (.*)\./);
+    if (!patternMatch) return [];
+
+    let pattern = patternMatch[1];
+
+    // 2. Convert Poketwo's hint format to Regex
+    // "\_" (escaped underscore) -> "." (wildcard)
+    // " " (space) -> ".*" or just space? Poketwo usually escapes spaces too or leaves them.
+    // Let's assume standard Poketwo hint: "T _ r t _ i g" or "T_rt_ig" logic
+
+    // Remove backslashes used for escaping
+    pattern = pattern.replace(/\\/g, "");
+
+    // Replace underscore with regex dot (.)
+    const regexString = "^" + pattern.replace(/_/g, ".") + "$";
+    const regex = new RegExp(regexString, "i"); // Case insensitive
+
+    // 3. Filter our local list
+    const matches = ALL_POKEMON.filter((p) => regex.test(p));
+    return matches;
+}
+
+// Monitoring miscatch
 async function logUnidentifiedPokemon(imageUrl, guess) {
     const dir = "./unidentified_pokemon";
     if (!fs.existsSync(dir)) fs.mkdirSync(dir);
@@ -244,6 +272,20 @@ client.on("messageCreate", async (message) => {
         // ... Insert hint solver logic here ...
         // const name = solveHint(message.content);
         // if(name) performCatch(message.channel, name);
+        let pokemon = [];
+        // 1. Try External Library
+        try {
+            pokemon = await solveHint(message);
+        } catch (err) {
+            console.log("[HINT] External lib error, trying local...");
+        }
+        // 2. Fallback: If external lib failed, use LOCAL SOLVER
+        if (!pokemon || pokemon.length === 0) {
+            console.log("[HINT] External lib returned nothing. Using Local Logic.");
+            pokemon = solveHintLocally(message.content);
+        }
+        // Catch pokemon
+        if (name) performCatch(message.channel, name);
     }
 });
 
