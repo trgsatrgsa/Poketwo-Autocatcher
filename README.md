@@ -10,6 +10,7 @@ What this repo does is adding something to tailor personal use case
 - Auto self correction mechanism if OCR go wrong
 - Generate random legit word when spaming
 - Stop incense when hit captcha
+- Configure to auto sendhint, control with CD time
 
 ### Usage
 
