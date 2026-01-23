@@ -80,6 +80,21 @@ function learnCorrection(badRaw, realName) {
     console.log(`[LEARN] Associated "${cleanBad}" with "${cleanReal}"`);
 }
 
+async function logUnidentifiedPokemon(imageUrl, guess) {
+    const dir = "./unidentified_pokemon";
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir);
+    const safeGuess = guess.replace(/[^a-z0-9]/gi, "_").toLowerCase();
+    const timestamp = Date.now();
+    const imagePath = path.join(dir, `${timestamp}_guess_${safeGuess}.png`);
+    try {
+        const response = await axios({ url: imageUrl, responseType: "stream" });
+        response.data.pipe(fs.createWriteStream(imagePath));
+        console.log(`[LOGGER] Saved unidentified Pokemon image to ${imagePath}`);
+    } catch (err) {
+        console.error("[ERROR] Failed to download image.");
+    }
+}
+
 // ---------------------------------------------------------
 // SECTION 2: ACTIONS (The Hands)
 // ---------------------------------------------------------
@@ -114,7 +129,8 @@ async function performCatch(channel, pokemonName, rawOcrText = null, imageUrl = 
 
             // Save image for debug
             if (config.logging.saveUnidentifiedImages && imageUrl) {
-                // ... (Insert your save image logic here) ...
+                // Download image for backup
+                await logUnidentifiedPokemon(imageUrl, pokemonName);
             }
         }
     });
