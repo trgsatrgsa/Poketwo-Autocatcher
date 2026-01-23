@@ -151,6 +151,8 @@ function sleep(ms) {
 }
 
 client.on("messageCreate", async (message) => {
+  const catchDelay = getRandomInterval(config.DELAY_MIN, config.DELAY_MAX);
+
   // [Owner Commands omitted for brevity - keep your existing ones]
   if (
     message.author.id === config.OwnerID &&
@@ -212,8 +214,6 @@ client.on("messageCreate", async (message) => {
     message.content.includes("The pokémon is")
   ) {
     let pokemon = [];
-    const catchDelay = getRandomInterval(config.DELAY_MIN, config.DELAY_MAX);
-
     // 1. Try External Library
     try {
       pokemon = await solveHint(message);
