@@ -169,7 +169,6 @@ client.on("messageCreate", async (message) => {
 
   // Checking if it contains data before proceeding
   if (embedTitle) {
-    console.log("Found Title:", embedTitle);
     // Example: checking if it is a Pokétwo spawn
     if (embedTitle.includes("has appeared")) {
       console.log(embedTitle);
