@@ -34,9 +34,8 @@ module.exports = {
     // In these channels, the bot will spam (if enabled) and catch AS FAST AS POSSIBLE.
     // Best for your private server.
     privateChannels: [
-        "XXXXXXXXX",
-        "XXXXXXXXX",
-        "XXXXXXXXX"
+        "123455678",
+        "YOUR_CHANNEL_ID",
     ],
 
     // ============================

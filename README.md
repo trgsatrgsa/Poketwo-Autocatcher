@@ -16,6 +16,9 @@ What this repo does is adding something to tailor personal use case
 
 1. Invite Poké-Name to your own server https://top.gg/bot/874910942490677270/invite
 2. Modify `config.js`, replace `XXXXXXXXX` to your according value
+   1. change the `userToken` to your token
+   2. change the `ownerID` with your user ID
+   3. copy your channel id that want to caught and update in `privateChannels`
 3. `npm clean-install`, install with fix library version avoid version mismatch
 4. run with `node index.js` to start the server
 
