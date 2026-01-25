@@ -247,7 +247,9 @@ async function performCatch(channel, pokemonName, rawOcrText = null, imageUrl = 
         }
     }
 
-    console.log(`[ACTION] Catching ${pokemonName} in ${catchDelay / 1000}s...`);
+    let msg = `[ACTION] Catching ${pokemonName} in ${catchDelay / 1000}s...`
+    await channel.send(msg);
+    console.log(msg);
 
     // 4. TYPING INDICATOR (New Feature!)
     // Start typing to look like a human
