@@ -16,6 +16,9 @@ module.exports = {
     // Watch a YouTube video on "How to get Discord User Token" if you don't know this.
     userToken: "XXXXXXXXX",
 
+    // Admin botToken
+    botToken: "",       // NEW: For the Admin Bot
+
     // Your User ID. Used so the bot knows who the "Master" is.
     // Enable 'Developer Mode' in Discord Settings -> Advanced, then Right Click your Name -> Copy ID.
     ownerID: "XXXXXXXXX",

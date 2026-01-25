@@ -22,6 +22,32 @@ What this repo does is adding something to tailor personal use case
 3. `npm clean-install`, install with fix library version avoid version mismatch
 4. run with `node index.js` to start the server
 
+### Create Bot token
+
+1. Go to Discord Developer Portal
+   - https://discord.com/developers/applications
+2. Create Application
+   - Click "New Application"
+   - Name it, accept ToS, click "Create"
+3. Configure Bot
+   1. Navigate to Bot section on left
+   2. Get Token
+      - Under "Token" section, click "Reset Token"
+      - Copy it (only shown once) — this goes in your config.js
+   3. Under "Authorization Flow", Public Bot - Checked
+   4. Under "Privileged Gateway Intents"
+      - "Message Content Intent" - Enable
+      - "Server Members Intent" - Enable
+4. Invite Bot to Server
+   1. Left sidebar → "OAuth2" → "OAuth2 URL Generator"
+   2. Under `Scopes`: select `bot`
+   3. BotPermission
+      1. General Permissions: View Channels
+      2. Text Permissions: Send Messages, Manage Messages, Read Message History
+   4.  Copy generated URL, open in browser, select server
+5. Use Token
+   - Paste token in your config where botToken is expected
+
 ### Dependency
 
 1. Node - v22.13.0
