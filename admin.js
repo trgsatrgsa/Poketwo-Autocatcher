@@ -1,7 +1,11 @@
 // --- admin.js ---
-const { Client, GatewayIntentBits, EmbedBuilder } = require("discord.js");
+const { Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags } = require("discord.js");
+const fs = require("fs");
+const path = require("path");
 const config = require("./config.js");
 const state = require("./state.js");
+
+const CONFIG_PATH = path.join(__dirname, "config.js");
 
 const adminClient = new Client({
     intents: [
@@ -17,7 +21,77 @@ const commands = {
     status: { aliases: ["s", "stat"], ownerOnly: true },
     pause: { aliases: ["stop", "off"], ownerOnly: true },
     resume: { aliases: ["start", "on", "r"], ownerOnly: true },
+    channels: { aliases: ["c", "ch", "list"], ownerOnly: true },
 };
+
+const pendingAdds = new Map();
+
+function saveConfig() {
+    const content = fs.readFileSync(CONFIG_PATH, "utf8");
+    const channelsStr = config.privateChannels.map(id => `        "${id}"`).join(",\n");
+    const updated = content.replace(
+        /privateChannels:\s*\[[\s\S]*?\]/,
+        `privateChannels: [\n${channelsStr}\n    ]`
+    );
+    fs.writeFileSync(CONFIG_PATH, updated, "utf8");
+    console.log(`[ADMIN] Config saved - ${config.privateChannels.length} channels`);
+}
+
+function buildChannelUI(page = 0) {
+    const perPage = 5;
+    const channels = config.privateChannels;
+    const totalPages = Math.ceil(channels.length / perPage) || 1;
+    page = Math.max(0, Math.min(page, totalPages - 1));
+    const start = page * perPage;
+    const slice = channels.slice(start, start + perPage);
+
+    const list = slice.length
+        ? slice.map((id, i) => `\`${start + i + 1}.\` <#${id}>`).join("\n")
+        : "*No channels - click ➕ to add*";
+
+    const embed = new EmbedBuilder()
+        .setTitle("📺 Private Channels")
+        .setColor(0x5865f2)
+        .setDescription(list)
+        .setFooter({ text: `Page ${page + 1}/${totalPages} • Total: ${channels.length}` });
+
+    // Delete buttons for each channel on current page
+    const deleteRow = new ActionRowBuilder();
+    slice.forEach((id, i) => {
+        deleteRow.addComponents(
+            new ButtonBuilder()
+                .setCustomId(`ch_del_${id}`)
+                .setLabel(`${start + i + 1}`)
+                .setEmoji("🗑️")
+                .setStyle(ButtonStyle.Danger)
+        );
+    });
+
+    // Nav row: prev, add, next
+    const navRow = new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+            .setCustomId(`ch_page_${page - 1}`)
+            .setEmoji("◀️")
+            .setStyle(ButtonStyle.Secondary)
+            .setDisabled(page === 0),
+        new ButtonBuilder()
+            .setCustomId("ch_add")
+            .setEmoji("➕")
+            .setLabel("Add")
+            .setStyle(ButtonStyle.Success),
+        new ButtonBuilder()
+            .setCustomId(`ch_page_${page + 1}`)
+            .setEmoji("▶️")
+            .setStyle(ButtonStyle.Secondary)
+            .setDisabled(page >= totalPages - 1)
+    );
+
+    const components = [];
+    if (slice.length) components.push(deleteRow);
+    components.push(navRow);
+
+    return { embed, components };
+}
 
 function levenshtein(a, b) {
     const m = a.length, n = b.length;
@@ -56,7 +130,10 @@ function showHelp(suggestion = null) {
             { name: "h, help", value: "Show this message" },
             { name: "s, status", value: "Show catcher status *(owner)*" },
             { name: "pause, stop", value: "Pause autocatcher *(owner)*" },
-            { name: "r, resume", value: "Resume autocatcher *(owner)*" }
+            { name: "r, resume", value: "Resume autocatcher *(owner)*" },
+            { name: "c", value: "Channel manager UI *(owner)*" },
+            { name: "c add <id>", value: "Add channel *(owner)*" },
+            { name: "c del <id>", value: "Remove channel *(owner)*" }
         )
         .setFooter({ text: "Usage: @bot <command>" });
     return embed;
@@ -75,11 +152,31 @@ adminClient.on("error", (err) => {
 adminClient.on("messageCreate", async (message) => {
     if (message.author.bot) return;
 
-    const mentioned = message.mentions.has(adminClient.user);
-    if (!mentioned) return;
+    // Handle pending add replies (no @mention needed)
+    const pending = pendingAdds.get(message.author.id);
+    if (pending && pending.channelId === message.channelId && Date.now() < pending.expires) {
+        const channelId = message.content.replace(/[<#>]/g, "").trim();
+        pendingAdds.delete(message.author.id);
+        if (!/^\d{17,20}$/.test(channelId)) {
+            return message.reply("❌ Invalid channel ID.");
+        }
+        if (config.privateChannels.includes(channelId)) {
+            return message.reply(`⚠️ <#${channelId}> already in list.`);
+        }
+        config.privateChannels.push(channelId);
+        saveConfig();
+        const ui = buildChannelUI(0);
+        return message.reply({ content: `✅ Added <#${channelId}>`, embeds: [ui.embed], components: ui.components });
+    }
 
-    const input = message.content.replace(/<@!?\d+>/g, "").trim().toLowerCase();
-    const cmd = resolveCommand(input);
+    if (!message.mentions.has(adminClient.user)) return;
+
+    const raw = message.content.replace(/<@!?\d+>/g, "").trim();
+    const parts = raw.toLowerCase().split(/\s+/);
+    const cmdInput = parts[0] || "";
+    const subCmd = parts[1] || "";
+    const arg = parts[2] || "";
+    const cmd = resolveCommand(cmdInput);
     const isOwner = message.author.id === config.ownerID;
 
     // Debug logging
@@ -88,8 +185,7 @@ adminClient.on("messageCreate", async (message) => {
     console.log(`[ADMIN]   Author ID:  "${message.author.id}"`);
     console.log(`[ADMIN]   Config ID:  "${config.ownerID}"`);
     console.log(`[ADMIN]   ID Match:   ${isOwner ? "✓ YES (owner)" : "✗ NO (not owner)"}`);
-    console.log(`[ADMIN]   Raw input:  "${input}"`);
-    console.log(`[ADMIN]   Resolved:   "${cmd || "none"}"`);
+    console.log(`[ADMIN]   Command:    "${cmdInput}" → "${cmd || "none"}" sub: "${subCmd}"`);
     console.log(`[ADMIN] ─────────────────────────────`);
 
     // Check owner-only
@@ -126,10 +222,81 @@ adminClient.on("messageCreate", async (message) => {
             state.isSleeping = false;
             return message.reply("▶️ **System Resumed.** Happy hunting!");
 
+        case "channels": {
+            // c add <id>
+            if (subCmd === "add" || subCmd === "+") {
+                const channelId = arg.replace(/[<#>]/g, "");
+                if (!channelId || !/^\d{17,20}$/.test(channelId)) {
+                    return message.reply("❌ Usage: `@bot c add <channel_id>`");
+                }
+                if (config.privateChannels.includes(channelId)) {
+                    return message.reply(`⚠️ <#${channelId}> already in list.`);
+                }
+                config.privateChannels.push(channelId);
+                saveConfig();
+                const ui = buildChannelUI(0);
+                return message.reply({ content: `✅ Added <#${channelId}>`, embeds: [ui.embed], components: ui.components });
+            }
+            // c del <id>
+            if (subCmd === "del" || subCmd === "-" || subCmd === "rm") {
+                const channelId = arg.replace(/[<#>]/g, "");
+                if (!channelId || !/^\d{17,20}$/.test(channelId)) {
+                    return message.reply("❌ Usage: `@bot c del <channel_id>`");
+                }
+                const idx = config.privateChannels.indexOf(channelId);
+                if (idx === -1) {
+                    return message.reply(`⚠️ <#${channelId}> not in list.`);
+                }
+                config.privateChannels.splice(idx, 1);
+                saveConfig();
+                const ui = buildChannelUI(0);
+                return message.reply({ content: `🗑️ Removed <#${channelId}>`, embeds: [ui.embed], components: ui.components });
+            }
+            // c (show UI)
+            const ui = buildChannelUI(0);
+            return message.reply({ embeds: [ui.embed], components: ui.components });
+        }
+
         default:
-            // Unknown command - show help with suggestion if close match found
-            const suggestion = input ? resolveCommand(input) : null;
+            const suggestion = cmdInput ? resolveCommand(cmdInput) : null;
+            if (!suggestion) return;
             return message.reply({ embeds: [showHelp(suggestion)] });
+    }
+});
+
+// Button interaction handler
+adminClient.on("interactionCreate", async (interaction) => {
+    if (!interaction.isButton()) return;
+    if (interaction.user.id !== config.ownerID) {
+        return interaction.reply({ content: "🔒 Owner only.", flags: MessageFlags.Ephemeral });
+    }
+
+    const id = interaction.customId;
+
+    // Pagination
+    if (id.startsWith("ch_page_")) {
+        const page = parseInt(id.split("_")[2], 10);
+        const ui = buildChannelUI(page);
+        return interaction.update({ embeds: [ui.embed], components: ui.components });
+    }
+
+    // Delete channel
+    if (id.startsWith("ch_del_")) {
+        const channelId = id.replace("ch_del_", "");
+        const idx = config.privateChannels.indexOf(channelId);
+        if (idx !== -1) {
+            config.privateChannels.splice(idx, 1);
+            saveConfig();
+        }
+        const ui = buildChannelUI(0);
+        return interaction.update({ embeds: [ui.embed], components: ui.components });
+    }
+
+    // Add channel - prompt user
+    if (id === "ch_add") {
+        await interaction.reply({ content: "📝 Reply with channel ID or #mention to add:", flags: MessageFlags.Ephemeral });
+        pendingAdds.set(interaction.user.id, { channelId: interaction.channelId, expires: Date.now() + 60000 });
+        return;
     }
 });
 
