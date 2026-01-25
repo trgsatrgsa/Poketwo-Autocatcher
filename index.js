@@ -56,12 +56,15 @@ const CLEAN_POKEMON_LIST = ALL_POKEMON.map((p) => ({
     clean: p.replace(/[^a-zA-Z0-9]/g, "").toUpperCase(),
 }));
 
+// IMPORT THE SHARED STATE
+const state = require("./state.js");
+
 // Constants
 const POKETWO_ID = "716390085896962058";
 const HINT_BOT_IDS = ["696161886734909481", "874910942490677270"];
 
 // State
-let isSleeping = false;
+// let isSleeping = false;
 const activeBadGuesses = new Map(); // Key: ChannelID, Value: RawGuess
 const channelHintTimers = new Map(); // <--- NEW: Tracks hint timer per Channel ID
 
@@ -296,6 +299,7 @@ async function performCatch(channel, pokemonName, rawOcrText = null, imageUrl = 
         if (msg.content.includes("Congratulations")) {
             console.log(`[SUCCESS] Caught ${pokemonName}`);
             activeBadGuesses.delete(channel.id);
+            state.stats.totalCaughtSession++;
 
             // Log to Discord if enabled
             if (config.logChannelID && config.logChannelID !== "") {
@@ -347,7 +351,7 @@ async function processImage(url) {
 // SECTION 3: EVENT HANDLING (The Flow)
 // ---------------------------------------------------------
 
-client.on("ready", () => {
+client.on("clientReady", () => {
     console.log(`[STATUS] Logged in as ${client.user.tag}`);
 
     // Start Spam Loop
@@ -356,7 +360,7 @@ client.on("ready", () => {
         if (!spamChan) return console.log("[WARN] Spam channel not found");
 
         const spamLoop = () => {
-            if (!isSleeping) {
+            if (!state.isSleeping) {
                 spamChan.send(faker.lorem.sentence(3));
             }
             setTimeout(spamLoop, getRandomInterval(config.spamDelayMin, config.spamDelayMax));
@@ -367,7 +371,7 @@ client.on("ready", () => {
 
 client.on("messageCreate", async (message) => {
     // 1. Global Guards
-    if (isSleeping && message.author.id !== config.ownerID) return;
+    if (state.isSleeping && message.author.id !== config.ownerID) return;
     // Check if we should care about this channel
     const mode = getChannelMode(message.channel.id);
     if (mode === "NONE") return; // Ignore channels not in our lists
@@ -378,14 +382,14 @@ client.on("messageCreate", async (message) => {
     // 2. Owner Commands
     if (message.author.id === config.ownerID) {
         if (message.content === "$resume") {
-            isSleeping = false;
+            state.isSleeping = false;
             return message.reply("Resumed.");
         }
     }
 
     // 3. Captcha Detection
     if (message.author.id === POKETWO_ID && message.content.includes("Please tell us")) {
-        isSleeping = true;
+        state.isSleeping = true;
         message.channel.send(`<@${POKETWO_ID}> incense pause`); // Safety
         console.log("[ALERT] Captcha detected! Bot paused.");
 
@@ -447,7 +451,7 @@ client.on("messageCreate", async (message) => {
         await sleep(waitTime);
 
         // Double check we didn't go to sleep while waiting
-        if (!isSleeping) {
+        if (!state.isSleeping) {
             await message.channel.send(`<@${POKETWO_ID}> hint`);
         }
 
