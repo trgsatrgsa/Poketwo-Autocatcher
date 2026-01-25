@@ -38,6 +38,14 @@ module.exports = {
         "YOUR_CHANNEL_ID",
     ],
 
+    // NOT YET IMPLEMENT, LEAVE IT BLANK WILL DO
+    // LIST 2: PUBLIC / COMMUNITY CHANNELS (NEW!)
+    // In these channels, the bot will "Stealth Mode":
+    // 1. It will NOT catch every single pokemon (to look less suspicious).
+    // 2. It will wait longer before catching.
+    publicChannels: [],
+
+
     // ============================
     // 3. REPORTING & LOGGING
     // ============================
