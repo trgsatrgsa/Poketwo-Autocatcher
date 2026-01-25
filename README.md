@@ -15,12 +15,27 @@ What this repo does is adding something to tailor personal use case
 ### Usage
 
 1. Invite Poké-Name to your own server https://top.gg/bot/874910942490677270/invite
-2. Modify `config.js`, replace `XXXXXXXXX` to your according value
-   1. change the `userToken` to your token
-   2. change the `ownerID` with your user ID
-   3. copy your channel id that want to caught and update in `privateChannels`
-3. `npm clean-install`, install with fix library version avoid version mismatch
-4. run with `node index.js` to start the server
+2. Configure `config.js`
+   - `userToken` - your Discord user token
+   - `ownerID` - your Discord user ID
+   - `botToken` - (optional) admin bot token, see [Create Bot Token](#create-bot-token)
+   - `privateChannels` - channel IDs to monitor
+3. `npm clean-install`
+4. `node index.js`
+
+### Admin Bot Commands
+
+If `botToken` is set, mention the bot to control:
+
+| Command | Description |
+|---------|-------------|
+| `@bot help` | Show all commands |
+| `@bot status` | Catcher status |
+| `@bot pause/resume` | Pause/resume catcher |
+| `@bot c` | Manage channels |
+| `@bot cfg` | Toggle settings |
+| `@bot delay` | Adjust timing |
+| `@bot log` | Set log channel |
 
 ### Create Bot token
 
