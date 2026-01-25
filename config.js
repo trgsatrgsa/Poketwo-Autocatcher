@@ -16,8 +16,9 @@ module.exports = {
     // Watch a YouTube video on "How to get Discord User Token" if you don't know this.
     userToken: "",
 
-    // Admin botToken
-    botToken: "",       // NEW: For the Admin Bot
+    // (Optional) Bot Token for Admin Bot.
+    // Leave empty "" if you do not want admin bot features.
+    botToken: "",
 
     // Your User ID. Used so the bot knows who the "Master" is.
     // Enable 'Developer Mode' in Discord Settings -> Advanced, then Right Click your Name -> Copy ID.
@@ -38,27 +39,25 @@ module.exports = {
     // Best for your private server.
     privateChannels: [],
 
-    // NOT YET IMPLEMENT, LEAVE IT BLANK WILL DO
-    // LIST 2: PUBLIC / COMMUNITY CHANNELS (NEW!)
-    // In these channels, the bot will "Stealth Mode":
-    // 1. It will NOT catch every single pokemon (to look less suspicious).
-    // 2. It will wait longer before catching.
+    // (Not yet implemented) Public / Community Channels.
+    // In stealth mode: catches less frequently and waits longer.
+    // Leave empty [] for now.
     publicChannels: [],
 
 
     // ============================
-    // 3. REPORTING & LOGGING
+    // SECTION 3: REPORTING & LOGGING
     // ============================
 
-    // ID of the channel to send logs (e.g., "Caught Pikachu").
-    // LEAVE EMPTY "" if you do not want logs.
+    // Channel ID to send catch logs (e.g., "Caught Pikachu").
+    // Leave empty "" if you do not want logs.
     logChannelID: "",
 
-    // ID of the channel to SPAM random messages.
-    // LEAVE EMPTY "" if you do not want to spam.
+    // Channel ID to spam random messages.
+    // Leave empty "" if you do not want to spam.
     spamChannelID: "",
 
-    // Technical settings (Don't touch unless you know what you are doing)
+    // (Advanced) Technical settings. Do not modify unless you know what you are doing.
     system: { port: 3333 },
 
     // ============================
@@ -98,9 +97,9 @@ module.exports = {
     // Maximum time to wait before catching.
     catchDelayMax: 5000,
 
-    // Randomize minimum time to spam in spameChannel. (default to 30000ms = 30s)
+    // Minimum time to wait between spam messages. (default: 30000ms = 30s)
     spamDelayMin: 30000,
-    // Randomize maximum time to spam in spameChannel. (default to 60000ms = 60s)
+    // Maximum time to wait between spam messages. (default: 60000ms = 60s)
     spamDelayMax: 60000,
 
 
