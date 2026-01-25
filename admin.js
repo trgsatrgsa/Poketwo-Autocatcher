@@ -22,20 +22,31 @@ const commands = {
     pause: { aliases: ["stop", "off"], ownerOnly: true },
     resume: { aliases: ["start", "on", "r"], ownerOnly: true },
     channels: { aliases: ["c", "ch", "list"], ownerOnly: true },
+    config: { aliases: ["cfg", "settings"], ownerOnly: true },
 };
 
 const pendingAdds = new Map();
 
-function saveConfig() {
+function saveConfigArray(key) {
     const content = fs.readFileSync(CONFIG_PATH, "utf8");
-    const channelsStr = config.privateChannels.map(id => `        "${id}"`).join(",\n");
-    const updated = content.replace(
-        /privateChannels:\s*\[[\s\S]*?\]/,
-        `privateChannels: [\n${channelsStr}\n    ]`
-    );
+    const arr = config[key];
+    const arrStr = arr.map(id => `        "${id}"`).join(",\n");
+    const regex = new RegExp(`${key}:\\s*\\[[\\s\\S]*?\\]`);
+    const updated = content.replace(regex, `${key}: [\n${arrStr}\n    ]`);
     fs.writeFileSync(CONFIG_PATH, updated, "utf8");
-    console.log(`[ADMIN] Config saved - ${config.privateChannels.length} channels`);
+    console.log(`[ADMIN] Config saved - ${key}: ${arr.length} items`);
 }
+
+function saveConfigValue(key, value) {
+    const content = fs.readFileSync(CONFIG_PATH, "utf8");
+    const regex = new RegExp(`(${key}:\\s*)([^,\\n]+)`);
+    const valStr = typeof value === "string" ? `"${value}"` : value;
+    const updated = content.replace(regex, `$1${valStr}`);
+    fs.writeFileSync(CONFIG_PATH, updated, "utf8");
+    console.log(`[ADMIN] Config saved - ${key}: ${value}`);
+}
+
+function saveConfig() { saveConfigArray("privateChannels"); }
 
 function buildChannelUI(page = 0) {
     const perPage = 5;
@@ -120,23 +131,95 @@ function resolveCommand(input) {
     return best;
 }
 
-function showHelp(suggestion = null) {
-    const embed = new EmbedBuilder()
-        .setTitle("📖 Admin Bot Help")
-        .setColor(0x5865f2)
-        .setDescription(suggestion ? `Did you mean **${suggestion}**? Here's the command list:` : "Mention me with a command:")
-        .addFields(
+const helpPages = [
+    {
+        title: "📖 Help - General",
+        fields: [
             { name: "p, ping", value: "Check bot latency" },
-            { name: "h, help", value: "Show this message" },
-            { name: "s, status", value: "Show catcher status *(owner)*" },
-            { name: "pause, stop", value: "Pause autocatcher *(owner)*" },
-            { name: "r, resume", value: "Resume autocatcher *(owner)*" },
-            { name: "c", value: "Channel manager UI *(owner)*" },
-            { name: "c add <id>", value: "Add channel *(owner)*" },
-            { name: "c del <id>", value: "Remove channel *(owner)*" }
-        )
-        .setFooter({ text: "Usage: @bot <command>" });
-    return embed;
+            { name: "h, help", value: "Show this help" },
+            { name: "s, status", value: "Catcher status *(owner)*" },
+            { name: "pause, stop", value: "Pause catcher *(owner)*" },
+            { name: "r, resume", value: "Resume catcher *(owner)*" },
+        ]
+    },
+    {
+        title: "📺 Help - Channels",
+        fields: [
+            { name: "c", value: "Channel manager UI" },
+            { name: "c add <id>", value: "Add channel" },
+            { name: "c del <id>", value: "Remove channel" },
+        ]
+    },
+    {
+        title: "⚙️ Help - Config",
+        fields: [
+            { name: "cfg", value: "Toggle settings panel" },
+            { name: "cfg hint", value: "Toggle auto hint" },
+            { name: "cfg solver", value: "Toggle hint solver" },
+            { name: "cfg ocr", value: "Toggle image reader" },
+            { name: "cfg save", value: "Toggle save error images" },
+        ]
+    }
+];
+
+function buildHelpUI(page = 0, suggestion = null) {
+    page = Math.max(0, Math.min(page, helpPages.length - 1));
+    const p = helpPages[page];
+
+    const embed = new EmbedBuilder()
+        .setTitle(p.title)
+        .setColor(0x5865f2)
+        .setDescription(suggestion ? `Did you mean **${suggestion}**?` : "Mention me with a command:")
+        .addFields(p.fields)
+        .setFooter({ text: `Page ${page + 1}/${helpPages.length} • @bot <command>` });
+
+    const row = new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+            .setCustomId(`help_page_${page - 1}`)
+            .setEmoji("◀️")
+            .setStyle(ButtonStyle.Secondary)
+            .setDisabled(page === 0),
+        new ButtonBuilder()
+            .setCustomId(`help_page_${page + 1}`)
+            .setEmoji("▶️")
+            .setStyle(ButtonStyle.Secondary)
+            .setDisabled(page >= helpPages.length - 1)
+    );
+
+    return { embed, components: [row] };
+}
+
+const toggles = [
+    { key: "activateAutoHint", label: "Auto Hint", emoji: "💡" },
+    { key: "activateHintSolver", label: "Hint Solver", emoji: "🧩" },
+    { key: "activateImageReader", label: "OCR Reader", emoji: "👁️" },
+    { key: "saveErrorImages", label: "Save Errors", emoji: "💾" },
+];
+
+function buildConfigUI() {
+    const lines = toggles.map(t => {
+        const val = config[t.key];
+        return `${t.emoji} **${t.label}**: ${val ? "✅ ON" : "❌ OFF"}`;
+    });
+
+    const embed = new EmbedBuilder()
+        .setTitle("⚙️ Settings")
+        .setColor(0x5865f2)
+        .setDescription(lines.join("\n"))
+        .setFooter({ text: "Click to toggle" });
+
+    const row = new ActionRowBuilder();
+    toggles.forEach(t => {
+        row.addComponents(
+            new ButtonBuilder()
+                .setCustomId(`cfg_${t.key}`)
+                .setEmoji(config[t.key] ? "✅" : "❌")
+                .setLabel(t.label)
+                .setStyle(config[t.key] ? ButtonStyle.Success : ButtonStyle.Secondary)
+        );
+    });
+
+    return { embed, components: [row] };
 }
 
 adminClient.on("clientReady", () => {
@@ -198,8 +281,10 @@ adminClient.on("messageCreate", async (message) => {
             const latency = Date.now() - message.createdTimestamp;
             return message.reply(`🏓 Pong! Latency: ${latency}ms | API: ${Math.round(adminClient.ws.ping)}ms`);
         }
-        case "help":
-            return message.reply({ embeds: [showHelp()] });
+        case "help": {
+            const ui = buildHelpUI(0);
+            return message.reply({ embeds: [ui.embed], components: ui.components });
+        }
 
         case "status": {
             const statusIcon = state.isSleeping ? "🔴 Paused" : "🟢 Running";
@@ -257,10 +342,24 @@ adminClient.on("messageCreate", async (message) => {
             return message.reply({ embeds: [ui.embed], components: ui.components });
         }
 
-        default:
+        case "config": {
+            // cfg <toggle> - quick toggle via command
+            const toggleMap = { hint: "activateAutoHint", solver: "activateHintSolver", ocr: "activateImageReader", save: "saveErrorImages" };
+            if (subCmd && toggleMap[subCmd]) {
+                const key = toggleMap[subCmd];
+                config[key] = !config[key];
+                saveConfigValue(key, config[key]);
+            }
+            const ui = buildConfigUI();
+            return message.reply({ embeds: [ui.embed], components: ui.components });
+        }
+
+        default: {
             const suggestion = cmdInput ? resolveCommand(cmdInput) : null;
             if (!suggestion) return;
-            return message.reply({ embeds: [showHelp(suggestion)] });
+            const ui = buildHelpUI(0, suggestion);
+            return message.reply({ embeds: [ui.embed], components: ui.components });
+        }
     }
 });
 
@@ -297,6 +396,24 @@ adminClient.on("interactionCreate", async (interaction) => {
         await interaction.reply({ content: "📝 Reply with channel ID or #mention to add:", flags: MessageFlags.Ephemeral });
         pendingAdds.set(interaction.user.id, { channelId: interaction.channelId, expires: Date.now() + 60000 });
         return;
+    }
+
+    // Help pagination
+    if (id.startsWith("help_page_")) {
+        const page = parseInt(id.split("_")[2], 10);
+        const ui = buildHelpUI(page);
+        return interaction.update({ embeds: [ui.embed], components: ui.components });
+    }
+
+    // Config toggle
+    if (id.startsWith("cfg_")) {
+        const key = id.replace("cfg_", "");
+        if (config.hasOwnProperty(key)) {
+            config[key] = !config[key];
+            saveConfigValue(key, config[key]);
+        }
+        const ui = buildConfigUI();
+        return interaction.update({ embeds: [ui.embed], components: ui.components });
     }
 });
 
