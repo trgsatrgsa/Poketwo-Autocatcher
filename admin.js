@@ -16,16 +16,20 @@ const adminClient = new Client({
 });
 
 const commands = {
-    ping: { aliases: ["p", "pong"], ownerOnly: false },
+    ping: { aliases: ["pong"], ownerOnly: false },
     help: { aliases: ["h", "?"], ownerOnly: false },
     status: { aliases: ["s", "stat"], ownerOnly: true },
-    pause: { aliases: ["stop", "off"], ownerOnly: true },
-    resume: { aliases: ["start", "on", "r"], ownerOnly: true },
+    pause: { aliases: ["p", "off", "stop"], ownerOnly: true },
+    resume: { aliases: ["r", "on", "start"], ownerOnly: true },
     channels: { aliases: ["c", "ch", "list"], ownerOnly: true },
     config: { aliases: ["cfg", "settings"], ownerOnly: true },
+    delay: { aliases: ["d", "timing"], ownerOnly: true },
+    log: { aliases: ["logch"], ownerOnly: true },
+    spam: { aliases: ["spamch"], ownerOnly: true },
 };
 
 const pendingAdds = new Map();
+const pendingChannelSets = new Map();
 
 function saveConfigArray(key) {
     const content = fs.readFileSync(CONFIG_PATH, "utf8");
@@ -135,29 +139,27 @@ const helpPages = [
     {
         title: "📖 Help - General",
         fields: [
-            { name: "p, ping", value: "Check bot latency" },
+            { name: "ping", value: "Check bot latency" },
             { name: "h, help", value: "Show this help" },
-            { name: "s, status", value: "Catcher status *(owner)*" },
-            { name: "pause, stop", value: "Pause catcher *(owner)*" },
-            { name: "r, resume", value: "Resume catcher *(owner)*" },
+            { name: "s, status", value: "Catcher status" },
+            { name: "p, pause", value: "Pause catcher" },
+            { name: "r, resume", value: "Resume catcher" },
         ]
     },
     {
         title: "📺 Help - Channels",
         fields: [
-            { name: "c", value: "Channel manager UI" },
-            { name: "c add <id>", value: "Add channel" },
-            { name: "c del <id>", value: "Remove channel" },
+            { name: "c", value: "Private channels UI" },
+            { name: "c add/del <id>", value: "Add or remove channel" },
+            { name: "log", value: "Set log channel" },
+            { name: "spam", value: "Set spam channel" },
         ]
     },
     {
         title: "⚙️ Help - Config",
         fields: [
             { name: "cfg", value: "Toggle settings panel" },
-            { name: "cfg hint", value: "Toggle auto hint" },
-            { name: "cfg solver", value: "Toggle hint solver" },
-            { name: "cfg ocr", value: "Toggle image reader" },
-            { name: "cfg save", value: "Toggle save error images" },
+            { name: "d, delay", value: "Timing settings" },
         ]
     }
 ];
@@ -222,10 +224,95 @@ function buildConfigUI() {
     return { embed, components: [row] };
 }
 
-adminClient.on("clientReady", () => {
+function msToSec(ms) { return (ms / 1000).toFixed(1) + "s"; }
+
+function buildDelayUI() {
+    const embed = new EmbedBuilder()
+        .setTitle("⏱️ Delay Settings")
+        .setColor(0x5865f2)
+        .setDescription(
+            `**Catch Delay**\n` +
+            `Min: \`${msToSec(config.catchDelayMin)}\` → Max: \`${msToSec(config.catchDelayMax)}\`\n\n` +
+            `**Spam Delay**\n` +
+            `Min: \`${msToSec(config.spamDelayMin)}\` → Max: \`${msToSec(config.spamDelayMax)}\`\n\n` +
+            `**Hint**\n` +
+            `Delay: \`${msToSec(config.autoHintDelay)}\` | Cooldown: \`${msToSec(config.hintCooldown)}\``
+        )
+        .setFooter({ text: "Adjust with +/- buttons (±1s)" });
+
+    const row1 = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId("delay_catchDelayMin_-").setLabel("Catch Min -").setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId("delay_catchDelayMin_+").setLabel("Catch Min +").setStyle(ButtonStyle.Primary),
+        new ButtonBuilder().setCustomId("delay_catchDelayMax_-").setLabel("Catch Max -").setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId("delay_catchDelayMax_+").setLabel("Catch Max +").setStyle(ButtonStyle.Primary)
+    );
+    const row2 = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId("delay_spamDelayMin_-").setLabel("Spam Min -").setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId("delay_spamDelayMin_+").setLabel("Spam Min +").setStyle(ButtonStyle.Primary),
+        new ButtonBuilder().setCustomId("delay_spamDelayMax_-").setLabel("Spam Max -").setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId("delay_spamDelayMax_+").setLabel("Spam Max +").setStyle(ButtonStyle.Primary)
+    );
+
+    return { embed, components: [row1, row2] };
+}
+
+function buildChannelSettingUI(type) {
+    const key = type === "log" ? "logChannelID" : "spamChannelID";
+    const title = type === "log" ? "📋 Log Channel" : "💬 Spam Channel";
+    const current = config[key];
+
+    const embed = new EmbedBuilder()
+        .setTitle(title)
+        .setColor(0x5865f2)
+        .setDescription(current ? `Current: <#${current}>` : "*Not set*")
+        .setFooter({ text: "Set a channel or clear" });
+
+    const row = new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+            .setCustomId(`chset_${type}_set`)
+            .setLabel("Set Channel")
+            .setEmoji("📝")
+            .setStyle(ButtonStyle.Primary),
+        new ButtonBuilder()
+            .setCustomId(`chset_${type}_clear`)
+            .setLabel("Clear")
+            .setEmoji("🗑️")
+            .setStyle(ButtonStyle.Danger)
+            .setDisabled(!current)
+    );
+
+    return { embed, components: [row] };
+}
+
+adminClient.on("clientReady", async () => {
     console.log(`[ADMIN] ✓ Bot Online: ${adminClient.user.tag} (ID: ${adminClient.user.id})`);
     console.log(`[ADMIN] ✓ Config ownerID: "${config.ownerID}"`);
     console.log(`[ADMIN] ✓ Listening for @mentions...`);
+
+    // Send startup notification
+    const embed = new EmbedBuilder()
+        .setTitle("🟢 Admin Bot Started")
+        .setColor(0x00ff00)
+        .setDescription(`Bot: **${adminClient.user.tag}**`)
+        .addFields(
+            { name: "Owner", value: `<@${config.ownerID}>`, inline: true },
+            { name: "Channels", value: `${config.privateChannels.length} active`, inline: true },
+            { name: "Time", value: `<t:${Math.floor(Date.now() / 1000)}:R>`, inline: true }
+        )
+        .setFooter({ text: "Use @bot help for commands" });
+
+    // Try to send to logChannel, fallback to DM owner
+    try {
+        if (config.logChannelID) {
+            const logChannel = await adminClient.channels.fetch(config.logChannelID);
+            if (logChannel) await logChannel.send({ embeds: [embed] });
+        } else {
+            const owner = await adminClient.users.fetch(config.ownerID);
+            if (owner) await owner.send({ embeds: [embed] });
+        }
+    } catch (e) {
+        console.log(`[ADMIN] Could not send startup notification: ${e.message}`);
+    }
 });
 
 adminClient.on("error", (err) => {
@@ -250,6 +337,21 @@ adminClient.on("messageCreate", async (message) => {
         saveConfig();
         const ui = buildChannelUI(0);
         return message.reply({ content: `✅ Added <#${channelId}>`, embeds: [ui.embed], components: ui.components });
+    }
+
+    // Handle pending channel setting replies (log/spam)
+    const pendingSet = pendingChannelSets.get(message.author.id);
+    if (pendingSet && pendingSet.channelId === message.channelId && Date.now() < pendingSet.expires) {
+        const channelId = message.content.replace(/[<#>]/g, "").trim();
+        pendingChannelSets.delete(message.author.id);
+        if (!/^\d{17,20}$/.test(channelId)) {
+            return message.reply("❌ Invalid channel ID.");
+        }
+        const key = pendingSet.type === "log" ? "logChannelID" : "spamChannelID";
+        config[key] = channelId;
+        saveConfigValue(key, channelId);
+        const ui = buildChannelSettingUI(pendingSet.type);
+        return message.reply({ content: `✅ Set to <#${channelId}>`, embeds: [ui.embed], components: ui.components });
     }
 
     if (!message.mentions.has(adminClient.user)) return;
@@ -354,6 +456,21 @@ adminClient.on("messageCreate", async (message) => {
             return message.reply({ embeds: [ui.embed], components: ui.components });
         }
 
+        case "delay": {
+            const ui = buildDelayUI();
+            return message.reply({ embeds: [ui.embed], components: ui.components });
+        }
+
+        case "log": {
+            const ui = buildChannelSettingUI("log");
+            return message.reply({ embeds: [ui.embed], components: ui.components });
+        }
+
+        case "spam": {
+            const ui = buildChannelSettingUI("spam");
+            return message.reply({ embeds: [ui.embed], components: ui.components });
+        }
+
         default: {
             const suggestion = cmdInput ? resolveCommand(cmdInput) : null;
             if (!suggestion) return;
@@ -414,6 +531,43 @@ adminClient.on("interactionCreate", async (interaction) => {
         }
         const ui = buildConfigUI();
         return interaction.update({ embeds: [ui.embed], components: ui.components });
+    }
+
+    // Delay adjustments
+    if (id.startsWith("delay_")) {
+        const parts = id.split("_");
+        const key = parts[1];
+        const op = parts[2];
+        const step = key.includes("spam") ? 5000 : 1000; // 5s for spam, 1s for catch
+        const min = 1000;
+        if (config.hasOwnProperty(key)) {
+            if (op === "+") config[key] += step;
+            else if (op === "-") config[key] = Math.max(min, config[key] - step);
+            saveConfigValue(key, config[key]);
+        }
+        const ui = buildDelayUI();
+        return interaction.update({ embeds: [ui.embed], components: ui.components });
+    }
+
+    // Channel setting (log/spam)
+    if (id.startsWith("chset_")) {
+        const parts = id.split("_");
+        const type = parts[1];
+        const action = parts[2];
+        const key = type === "log" ? "logChannelID" : "spamChannelID";
+
+        if (action === "clear") {
+            config[key] = "";
+            saveConfigValue(key, "");
+            const ui = buildChannelSettingUI(type);
+            return interaction.update({ embeds: [ui.embed], components: ui.components });
+        }
+
+        if (action === "set") {
+            await interaction.reply({ content: "📝 Reply with channel ID or #mention:", flags: MessageFlags.Ephemeral });
+            pendingChannelSets.set(interaction.user.id, { type, channelId: interaction.channelId, expires: Date.now() + 60000 });
+            return;
+        }
     }
 });
 
