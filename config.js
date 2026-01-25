@@ -14,14 +14,14 @@ module.exports = {
 
     // Your Discord User Token. (NOT a Bot Token).
     // Watch a YouTube video on "How to get Discord User Token" if you don't know this.
-    userToken: "XXXXXXXXX",
+    userToken: "",
 
     // Admin botToken
     botToken: "",       // NEW: For the Admin Bot
 
     // Your User ID. Used so the bot knows who the "Master" is.
     // Enable 'Developer Mode' in Discord Settings -> Advanced, then Right Click your Name -> Copy ID.
-    ownerID: "XXXXXXXXX",
+    ownerID: "",
 
     // (Optional) OCR Space API Key.
     // Leave this empty "" if you want to use the default internal reader.
@@ -36,10 +36,7 @@ module.exports = {
     // LIST 1: PRIVATE FARMING CHANNELS
     // In these channels, the bot will spam (if enabled) and catch AS FAST AS POSSIBLE.
     // Best for your private server.
-    privateChannels: [
-        "123455678",
-        "YOUR_CHANNEL_ID",
-    ],
+    privateChannels: [],
 
     // NOT YET IMPLEMENT, LEAVE IT BLANK WILL DO
     // LIST 2: PUBLIC / COMMUNITY CHANNELS (NEW!)
