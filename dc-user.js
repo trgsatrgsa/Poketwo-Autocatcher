@@ -216,16 +216,17 @@ async function performCatch(channel, pokemonName, rawOcrText = null, imageUrl = 
 
     console.log(`[ANALYSIS] Channel: ${channel.id} | Users (3m): ${crowdStatus} | Mode: ${mode}`);
 
-    // 2. STOP IF CROWDED (Safety First)
-    if (crowdStatus === "CROWDED") {
-        console.log(`[SAFETY] Too many people (${crowdStatus}). Aborting catch for ${pokemonName}.`);
-        return;
-    }
-
     // 3. CALCULATE DELAY
     let catchDelay = getRandomInterval(config.catchDelayMin, config.catchDelayMax);
 
+    // PUBLIC Server mode
     if (mode === "PUBLIC") {
+        // STOP IF CROWDED (Safety First)
+        if (crowdStatus === "CROWDED") {
+            console.log(`[SAFETY] Too many people (${crowdStatus}). Aborting catch for ${pokemonName}.`);
+            return;
+        }
+
         if (crowdStatus === "ACTIVE") {
             // LOGIC: If Public channel AND people are watching (ACTIVE), use probability
 
@@ -248,7 +249,7 @@ async function performCatch(channel, pokemonName, rawOcrText = null, imageUrl = 
     }
 
     let msg = `[ACTION] Catching ${pokemonName} in ${catchDelay / 1000}s...`
-    await channel.send(msg);
+    // await channel.send(msg);
     console.log(msg);
 
     // 4. TYPING INDICATOR (New Feature!)
