@@ -3,6 +3,8 @@ const { Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder
 const fs = require("fs");
 const path = require("path");
 const config = require("./config.js");
+if (!config.botToken) config.botToken = process.env.BOT_TOKEN || "";
+if (!config.ownerID) config.ownerID = process.env.OWNER_ID || "";
 const state = require("./state.js");
 
 const CONFIG_PATH = path.join(__dirname, "config.js");

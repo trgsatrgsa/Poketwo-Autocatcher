@@ -26,6 +26,11 @@ try {
     process.exit(1);
 }
 
+// --- ENV FALLBACK (If config value is empty, try env variable) ---
+if (!config.userToken) config.userToken = process.env.USER_TOKEN || "";
+if (!config.botToken) config.botToken = process.env.BOT_TOKEN || "";
+if (!config.ownerID) config.ownerID = process.env.OWNER_ID || "";
+
 // --- USER INPUT VALIDATION (Friendly Errors) ---
 // This section checks if the user actually filled out the config file.
 if (config.userToken === "PASTE_YOUR_TOKEN_HERE" || config.userToken === "") {
