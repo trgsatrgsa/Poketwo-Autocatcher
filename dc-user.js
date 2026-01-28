@@ -30,6 +30,7 @@ try {
 if (!config.userToken) config.userToken = process.env.USER_TOKEN || "";
 if (!config.botToken) config.botToken = process.env.BOT_TOKEN || "";
 if (!config.ownerID) config.ownerID = process.env.OWNER_ID || "";
+if (process.env.PORT) config.system.port = parseInt(process.env.PORT, 10);
 
 // --- USER INPUT VALIDATION (Friendly Errors) ---
 // This section checks if the user actually filled out the config file.
