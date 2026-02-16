@@ -54,7 +54,7 @@ If `botToken` is set, mention your bot by name to control (e.g. `@YourBotName he
 
 | Command | Description |
 |---------|-------------|
-| `$ping` | Verify channel is being monitored (output in CLI) |
+| `$ping` | Verify channel is being monitored (replies in Discord, auto-deletes after 5s) |
 | `$resume` | Resume bot after captcha pause |
 
 ### 6. Create Bot Token
