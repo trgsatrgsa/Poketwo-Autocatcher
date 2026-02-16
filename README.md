@@ -19,6 +19,8 @@ What this repo does is adding something to tailor personal use case
    - `userToken` - your Discord user token
    - `ownerID` - your Discord user ID
    - `botToken` - (optional) admin bot token, see [Create Bot Token](#create-bot-token)
+   - `ocrSpaceApiKey` - (optional) OCR Space API key, falls back to local Tesseract if empty. Get from https://ocr.space/ocrapi
+   - `ocrSpacePro` - set `true` if using OCR Space Pro account
    - `privateChannels` - channel IDs to monitor
 3. `npm clean-install`
 4. `node index.js`

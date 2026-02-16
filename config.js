@@ -29,6 +29,9 @@ module.exports = {
     // Only fill this if the bot is struggling to read images.
     ocrSpaceApiKey: "",
 
+    // Set to true if you have an OCR Space Pro account.
+    // Uses the faster pro endpoint: https://apipro1.ocr.space/parse/image
+    ocrSpacePro: false,
 
     // ============================
     // SECTION 2: CHANNEL SETTINGS

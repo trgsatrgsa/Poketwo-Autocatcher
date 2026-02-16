@@ -341,7 +341,9 @@ async function processImage(url) {
             rawText = text;
         } else {
             // Fallback to OCR Space
-            const res = await ocrSpace(url, { apiKey: config.ocrSpaceApiKey });
+            const ocrOpts = { apiKey: config.ocrSpaceApiKey };
+            if (config.ocrSpacePro) ocrOpts.ocrUrl = 'https://apipro1.ocr.space/parse/image';
+            const res = await ocrSpace(url, ocrOpts);
             if (res.ParsedResults && res.ParsedResults[0]) {
                 rawText = res.ParsedResults[0].ParsedText;
             }
