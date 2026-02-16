@@ -396,6 +396,8 @@ client.on("messageCreate", async (message) => {
     if (message.author.id === config.ownerID) {
         if (message.content === "$ping") {
             console.log(`[PING] ✓ Channel ${message.channel.id} (${mode}) is being monitored.`);
+            const reply = await message.reply("✓ Channel is being monitored.");
+            setTimeout(() => { reply.delete().catch(() => {}); message.delete().catch(() => {}); }, 5000);
             return;
         }
         if (message.content === "$resume") {
