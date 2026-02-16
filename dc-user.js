@@ -52,6 +52,8 @@ if (config.activateSpamming && config.spamChannelID === "PASTE_CHANNEL_ID_HERE")
 
 console.log(`[STATUS] Configuration loaded successfully.`);
 console.log(`[STATUS] Logged in user: ${config.ownerID ? "Valid" : "Unknown (ID missing)"}`);
+const ocrEngine = (config.ocrSpaceApiKey && config.ocrSpaceApiKey !== "") ? `OCR Space${config.ocrSpacePro ? " (Pro)" : ""}` : "Tesseract (local)";
+console.log(`[STATUS] Monitoring ${config.privateChannels.length} channel(s) | OCR: ${ocrEngine} | Hints: ${config.activateAutoHint ? "ON" : "OFF"} | Hint Solver: ${config.activateHintSolver ? "ON" : "OFF"}`);
 
 
 // Preload Pokemon List
@@ -392,6 +394,10 @@ client.on("messageCreate", async (message) => {
 
     // 2. Owner Commands
     if (message.author.id === config.ownerID) {
+        if (message.content === "$ping") {
+            console.log(`[PING] ✓ Channel ${message.channel.id} (${mode}) is being monitored.`);
+            return;
+        }
         if (message.content === "$resume") {
             state.isSleeping = false;
             return message.reply("Resumed.");

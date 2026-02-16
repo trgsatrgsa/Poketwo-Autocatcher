@@ -50,6 +50,13 @@ If `botToken` is set, mention your bot by name to control (e.g. `@YourBotName he
 | `@YourBotName delay` | Adjust timing |
 | `@YourBotName log` | Set log channel |
 
+#### Owner Commands (type in monitored channel)
+
+| Command | Description |
+|---------|-------------|
+| `$ping` | Verify channel is being monitored (output in CLI) |
+| `$resume` | Resume bot after captcha pause |
+
 ### 6. Create Bot Token
 
 #### 6.1. Creating the application
