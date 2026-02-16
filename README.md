@@ -38,17 +38,17 @@ Override `config.js` values when empty (or override for `PORT`):
 
 ### 5. Admin Bot Commands
 
-If `botToken` is set, mention the bot to control:
+If `botToken` is set, mention your bot by name to control (e.g. `@YourBotName help`):
 
 | Command | Description |
 |---------|-------------|
-| `@bot help` | Show all commands |
-| `@bot status` | Catcher status |
-| `@bot pause/resume` | Pause/resume catcher |
-| `@bot c` | Manage channels |
-| `@bot cfg` | Toggle settings |
-| `@bot delay` | Adjust timing |
-| `@bot log` | Set log channel |
+| `@YourBotName help` | Show all commands |
+| `@YourBotName status` | Catcher status |
+| `@YourBotName pause/resume` | Pause/resume catcher |
+| `@YourBotName c` | Manage channels |
+| `@YourBotName cfg` | Toggle settings |
+| `@YourBotName delay` | Adjust timing |
+| `@YourBotName log` | Set log channel |
 
 ### 6. Create Bot Token
 
@@ -91,41 +91,11 @@ Go back to the **Bot** page, click **Reset Token** and copy it (only shown once)
 
 Set it as `botToken` in `config.js` or as `BOT_TOKEN` environment variable.
 
-### 7. Hosting on Replit
-
-Create a Replit account at https://replit.com/login, then fork this repo.
-
-#### 7.1. Configuration
-
-Open **Secrets (Environment Variables)** in your Replit project (top right search icon, in the search find `Secrets`).
-
-Add the following secrets:
-
-| Key | Value |
-|-----|-------|
-| `USER_TOKEN` | Your Discord user token |
-| `BOT_TOKEN` | Admin bot token (from [Create Bot Token](#create-bot-token)) |
-| `OWNER_ID` | Your Discord user ID |
-
-Click the green **Run** button. The bot should be online.
-
-#### 7.2. Keeping the bot online 24/7
-
-Replit will shutdown if you close the window. Use [UptimeRobot](https://uptimerobot.com/signUp) to keep it alive.
-
-1. Sign up and go to Dashboard
-2. Click **Create New Monitor**
-   - **Monitor Type**: HTTP(s)
-   - **Friendly Name**: Anything
-   - **URL**: Your Replit project URL (ends with `.repl.co`)
-   - **Monitoring Interval**: 5 minutes
-3. Click **Create Monitor**
-
-### 8. Dependency
+### 7. Dependency
 
 1. Node - v22.13.0
 2. NPM - 10.9.2
 
-### 9. Limitation
+### 8. Limitation
 
 - It is not 100% catcher, it is a progressive learning catcher. When system fail to catch, it self auto learn and note down itself in namefix.json to make next time correct.
