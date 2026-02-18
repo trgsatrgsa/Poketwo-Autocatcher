@@ -16,12 +16,12 @@ What this repo does is adding something to tailor personal use case
 
 1. Invite Poké-Name to your own server https://top.gg/bot/874910942490677270/invite
 2. Configure `config.js`
-   - `userToken` - your Discord user token
-   - `ownerID` - your Discord user ID
+   - `userToken` - your Discord user token, e.g. `"NzkyNzE1NDU0MTk2MDg4ODQy.X-hvzA.Ov4..."`
+   - `ownerID` - your Discord user ID, e.g. `"123456789012345678"` (must be a string!)
    - `botToken` - (optional) admin bot token, see [Create Bot Token](#create-bot-token)
-   - `ocrSpaceApiKey` - (optional) OCR Space API key, falls back to local Tesseract if empty. Get from https://ocr.space/ocrapi
-   - `ocrSpacePro` - set `true` if using OCR Space Pro account
-   - `privateChannels` - channel IDs to monitor
+   - `ocrSpaceApiKey` - (optional) OCR Space API key, e.g. `"K87771060788957"`. Falls back to local Tesseract if empty. Get from https://ocr.space/ocrapi
+   - `ocrSpacePro` - set `true` if using OCR Space Pro account (must be `true`/`false`, not `"true"`/`"false"`)
+   - `privateChannels` - channel IDs to monitor, e.g. `["1460944701967433787"]` (must be strings with quotes!)
 3. `npm clean-install`
 4. `node index.js`
 

@@ -44,10 +44,19 @@ if (config.userToken === "PASTE_YOUR_TOKEN_HERE" || config.userToken === "") {
     process.exit(1);
 }
 
-if (config.activateSpamming && config.spamChannelID === "PASTE_CHANNEL_ID_HERE") {
-    console.log("\n[WARNING] You turned on Spamming, but didn't provide a Channel ID.");
-    console.log("The bot will NOT spam messages until you fix 'spamChannelID'.\n");
-    config.activateSpamming = false; // Force disable to prevent crash
+const { errors: configErrors, warnings: configWarnings } = validateConfig(config);
+if (configErrors.length > 0) {
+    console.log("\n===================================================");
+    console.log(` [STOP] ${configErrors.length} config error(s) — bot cannot start:`);
+    console.log("===================================================");
+    configErrors.forEach(e => console.log(`  ✗ ${e}`));
+    console.log("\nFix these in config.js and restart.\n");
+    process.exit(1);
+}
+if (configWarnings.length > 0) {
+    console.log(`\n[CONFIG] ⚠ ${configWarnings.length} warning(s):`);
+    configWarnings.forEach(w => console.log(`  → ${w}`));
+    console.log();
 }
 
 console.log(`[STATUS] Configuration loaded successfully.`);
@@ -94,6 +103,76 @@ app.listen(config.system.port || 3333, () => console.log(`[SYS] Listening on ${c
 
 function getRandomInterval(min, max) {
     return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+
+function validateConfig(cfg) {
+    const errors = [];  // Fatal — bot will not start
+    const warnings = []; // Advisory — bot runs but you should fix
+    const isDiscordId = (v) => typeof v === "string" && /^\d{17,20}$/.test(v);
+    const RATE_LIMIT_REF = "https://discord.com/developers/docs/topics/rate-limits";
+    const DISCORD_ID_REF = "https://support.discord.com/hc/en-us/articles/206346498-Where-can-I-find-my-User-Server-Message-ID";
+
+    // === FATAL: Type errors that will silently break things ===
+
+    // Channel IDs as numbers — JS loses precision on large numbers, lookups will fail
+    cfg.privateChannels.forEach((ch, i) => {
+        if (typeof ch === "number")
+            errors.push(`[privateChannels[${i}]] ${ch} is a number — MUST be a string. Wrap in quotes: "${ch}". JavaScript loses precision on large numbers so the channel will never match.`);
+    });
+    if (cfg.spamChannelID && typeof cfg.spamChannelID === "number")
+        errors.push(`[spamChannelID] ${cfg.spamChannelID} is a number — MUST be a string. Wrap in quotes.`);
+    if (cfg.logChannelID && typeof cfg.logChannelID === "number")
+        errors.push(`[logChannelID] ${cfg.logChannelID} is a number — MUST be a string. Wrap in quotes.`);
+    if (cfg.ownerID && typeof cfg.ownerID === "number")
+        errors.push(`[ownerID] ${cfg.ownerID} is a number — MUST be a string. Wrap in quotes.`);
+
+    // Booleans as strings — "false" is truthy in JS, so features will be ON when user thinks they're OFF
+    ["activateAutoHint", "activateHintSolver", "activateImageReader", "saveErrorImages", "ocrSpacePro"].forEach(key => {
+        if (typeof cfg[key] === "string")
+            errors.push(`[${key}] Is "${cfg[key]}" (string) — MUST be true or false without quotes. In JS, "false" is truthy so the feature will be ON when you expect OFF.`);
+    });
+
+    // === WARNINGS: Won't crash but likely misconfigured ===
+
+    // Credentials
+    if (!cfg.ownerID || !isDiscordId(cfg.ownerID))
+        warnings.push(`[ownerID] Missing or invalid — must be a Discord ID (17-20 digit string). See: ${DISCORD_ID_REF}`);
+    if (cfg.botToken && cfg.botToken.length > 0 && cfg.botToken.length < 50)
+        warnings.push("[botToken] Looks too short — make sure it's a valid bot token from Discord Developer Portal.");
+
+    // Channel IDs format
+    if (cfg.privateChannels.length === 0)
+        warnings.push("[privateChannels] Empty — bot has nothing to monitor. Add at least one channel ID.");
+    cfg.privateChannels.forEach((ch, i) => {
+        if (typeof ch === "string" && !isDiscordId(ch))
+            warnings.push(`[privateChannels[${i}]] "${ch}" is not a valid Discord ID. See: ${DISCORD_ID_REF}`);
+    });
+    if (cfg.spamChannelID && typeof cfg.spamChannelID === "string" && !isDiscordId(cfg.spamChannelID))
+        warnings.push(`[spamChannelID] "${cfg.spamChannelID}" is not a valid Discord ID. See: ${DISCORD_ID_REF}`);
+    if (cfg.logChannelID && typeof cfg.logChannelID === "string" && !isDiscordId(cfg.logChannelID))
+        warnings.push(`[logChannelID] "${cfg.logChannelID}" is not a valid Discord ID. See: ${DISCORD_ID_REF}`);
+    if (cfg.spamChannelID && cfg.privateChannels.includes(cfg.spamChannelID))
+        warnings.push("[spamChannelID] Same as a private channel — spam + catch in same channel may confuse Poketwo or look suspicious.");
+
+    // OCR
+    if (cfg.ocrSpacePro && (!cfg.ocrSpaceApiKey || cfg.ocrSpaceApiKey === ""))
+        warnings.push("[ocrSpacePro] Enabled but no ocrSpaceApiKey — pro endpoint will reject requests without a key. Get one at: https://ocr.space/ocrapi");
+
+    // Timing
+    if (cfg.catchDelayMin > cfg.catchDelayMax)
+        warnings.push("[catchDelay] Min > Max — these will be swapped. Check your values.");
+    if (cfg.catchDelayMin < 1000)
+        warnings.push(`[catchDelayMin] ${cfg.catchDelayMin}ms is very fast — Poketwo may flag your account for bot-like behavior.`);
+    if (cfg.spamDelayMin > cfg.spamDelayMax)
+        warnings.push("[spamDelay] Min > Max — these will be swapped. Check your values.");
+    if (cfg.spamChannelID && cfg.spamDelayMin < 5000)
+        warnings.push(`[spamDelayMin] ${cfg.spamDelayMin}ms — sending messages faster than 5s may trigger Discord rate limits (429 errors). See: ${RATE_LIMIT_REF}`);
+    if (cfg.hintCooldown < 10000)
+        warnings.push(`[hintCooldown] ${cfg.hintCooldown}ms is too aggressive — Discord will rate limit or ignore your hint commands. Recommended: 60000 (60s). See: ${RATE_LIMIT_REF}`);
+    if (cfg.autoHintDelay < 500)
+        warnings.push(`[autoHintDelay] ${cfg.autoHintDelay}ms — responding under 500ms looks inhuman and may trigger Poketwo's captcha.`);
+
+    return { errors, warnings };
 }
 
 function sleep(ms) {

@@ -13,20 +13,23 @@ module.exports = {
     // ============================
 
     // Your Discord User Token. (NOT a Bot Token).
+    // Example: "NzkyNzE1NDU0MTk2MDg4ODQy.X-hvzA.Ov4..."
     // Watch a YouTube video on "How to get Discord User Token" if you don't know this.
     userToken: "",
 
     // (Optional) Bot Token for Admin Bot.
+    // Example: "MTQ2NDk4MTY1NzI4NjA4MjU5MA.G996i-.abc123..."
     // Leave empty "" if you do not want admin bot features.
     botToken: "",
 
     // Your User ID. Used so the bot knows who the "Master" is.
+    // Example: "123456789012345678" (must be a string with quotes!)
     // Enable 'Developer Mode' in Discord Settings -> Advanced, then Right Click your Name -> Copy ID.
     ownerID: "",
 
-    // (Optional) OCR Space API Key.
-    // Leave this empty "" if you want to use the default internal reader.
-    // Only fill this if the bot is struggling to read images.
+    // (Optional) OCR Space API Key. Falls back to local Tesseract if empty.
+    // Example: "K87771060788957"
+    // Get one at: https://ocr.space/ocrapi
     ocrSpaceApiKey: "",
 
     // Set to true if you have an OCR Space Pro account.
@@ -39,6 +42,7 @@ module.exports = {
 
     // LIST 1: PRIVATE FARMING CHANNELS
     // In these channels, the bot will spam (if enabled) and catch AS FAST AS POSSIBLE.
+    // Example: ["09876543210987654321", "12345678901234567890"] (must be strings with quotes!)
     // Best for your private server.
     privateChannels: [],
 
@@ -53,10 +57,12 @@ module.exports = {
     // ============================
 
     // Channel ID to send catch logs (e.g., "Caught Pikachu").
+    // Example: "123456789012345678"
     // Leave empty "" if you do not want logs.
     logChannelID: "",
 
     // Channel ID to spam random messages.
+    // Example: "123456789012345678"
     // Leave empty "" if you do not want to spam.
     spamChannelID: "",
 
