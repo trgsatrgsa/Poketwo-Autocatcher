@@ -364,14 +364,18 @@ async function processImage(url) {
 // SECTION 3: EVENT HANDLING (The Flow)
 // ---------------------------------------------------------
 
-client.on("clientReady", () => {
+client.on("ready", async () => {
     console.log(`[STATUS] Logged in as ${client.user.tag}`);
 
     // Start Spam Loop
     if (config.spamChannelID && config.spamChannelID !== "") {
-        const spamChan = client.channels.cache.get(config.spamChannelID);
-        if (!spamChan) return console.log("[WARN] Spam channel not found");
+        let spamChan = client.channels.cache.get(config.spamChannelID);
+        if (!spamChan) {
+            try { spamChan = await client.channels.fetch(config.spamChannelID); } catch (e) {}
+        }
+        if (!spamChan) return console.log("[WARN] Spam channel not found: " + config.spamChannelID);
 
+        console.log(`[STATUS] Spam channel found: ${config.spamChannelID} — spamming every ${config.spamDelayMin/1000}-${config.spamDelayMax/1000}s`);
         const spamLoop = () => {
             if (!state.isSleeping) {
                 spamChan.send(faker.lorem.sentence(3));
@@ -385,6 +389,17 @@ client.on("clientReady", () => {
 client.on("messageCreate", async (message) => {
     // 1. Global Guards
     if (state.isSleeping && message.author.id !== config.ownerID) return;
+    // Owner $ping — works in any channel (monitored, spam, or unmonitored)
+    if (message.author.id === config.ownerID && message.content === "$ping") {
+        const mode = getChannelMode(message.channel.id);
+        const isSpa = message.channel.id === config.spamChannelID;
+        const label = mode !== "NONE" ? mode : isSpa ? "SPAM" : "NOT MONITORED";
+        console.log(`[PING] Channel ${message.channel.id} → ${label}`);
+        const reply = await message.reply(`${label !== "NOT MONITORED" ? "✓" : "✗"} Channel: ${label}`);
+        setTimeout(() => { reply.delete().catch(() => {}); message.delete().catch(() => {}); }, 5000);
+        return;
+    }
+
     // Check if we should care about this channel
     const mode = getChannelMode(message.channel.id);
     if (mode === "NONE") return; // Ignore channels not in our lists
@@ -394,12 +409,6 @@ client.on("messageCreate", async (message) => {
 
     // 2. Owner Commands
     if (message.author.id === config.ownerID) {
-        if (message.content === "$ping") {
-            console.log(`[PING] ✓ Channel ${message.channel.id} (${mode}) is being monitored.`);
-            const reply = await message.reply("✓ Channel is being monitored.");
-            setTimeout(() => { reply.delete().catch(() => {}); message.delete().catch(() => {}); }, 5000);
-            return;
-        }
         if (message.content === "$resume") {
             state.isSleeping = false;
             return message.reply("Resumed.");
